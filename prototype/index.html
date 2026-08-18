@@ -1,0 +1,683 @@
+<title>PR Walkthrough — behaviour & decisions</title>
+<style>
+  :root {
+    --ground: #f6f7f9; --surface: #fff; --surface-2: #eef0f4;
+    --ink: #1a1f27; --ink-2: #4a5361; --ink-3: #7a8494;
+    --line: #e0e4ea; --line-2: #c9d0db;
+    --accent: #5b5bd6; --accent-soft: #ecebfb; --accent-ink: #3d3aa8;
+    --author: #0e7c86; --author-soft: #dcf1f2;
+    --infer: #b26a00; --infer-soft: #f8eede;
+    --good: #158a5a; --good-soft: #e4f4ec;
+    --bad: #c0392b; --bad-soft: #fbe9e7;
+    --add-bg: #e9f6ef;
+    --shadow: 0 1px 2px rgba(16,22,32,.05), 0 8px 24px rgba(16,22,32,.07);
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0e1115; --surface: #161a20; --surface-2: #1e232b;
+      --ink: #e8ecf2; --ink-2: #aab3c0; --ink-3: #717d8c;
+      --line: #262c35; --line-2: #333b46;
+      --accent: #a5a3f5; --accent-soft: #23233a; --accent-ink: #c9c8fb;
+      --author: #46b6bf; --author-soft: #12292b;
+      --infer: #e0a252; --infer-soft: #2a2113;
+      --good: #4bc48a; --good-soft: #14261d;
+      --bad: #e8776a; --bad-soft: #2c1614;
+      --add-bg: #13241b;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 28px rgba(0,0,0,.4);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0e1115; --surface: #161a20; --surface-2: #1e232b;
+    --ink: #e8ecf2; --ink-2: #aab3c0; --ink-3: #717d8c;
+    --line: #262c35; --line-2: #333b46;
+    --accent: #a5a3f5; --accent-soft: #23233a; --accent-ink: #c9c8fb;
+    --author: #46b6bf; --author-soft: #12292b;
+    --infer: #e0a252; --infer-soft: #2a2113;
+    --good: #4bc48a; --good-soft: #14261d;
+    --bad: #e8776a; --bad-soft: #2c1614;
+    --add-bg: #13241b;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 28px rgba(0,0,0,.4);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--ground); color: var(--ink); font-family: var(--sans); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  .app { display: grid; grid-template-rows: auto auto 1fr; height: 100vh; max-height: 100vh; }
+
+  .topbar { display: flex; align-items: center; gap: 16px; padding: 11px 20px; background: var(--surface); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .brand { display: flex; align-items: baseline; gap: 9px; min-width: 0; }
+  .brand .num { font-family: var(--mono); font-weight: 600; color: var(--accent); font-size: 13px; }
+  .brand .title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40ch; }
+  .brand .repo { color: var(--ink-3); font-family: var(--mono); font-size: 12px; }
+  .spacer { flex: 1 1 auto; }
+  .theme-toggle { font: inherit; font-size: 12px; background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--line); border-radius: 7px; padding: 5px 10px; cursor: pointer; }
+
+  /* track toggle */
+  .trackbar { display: flex; align-items: center; gap: 14px; padding: 0 20px; background: var(--surface); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .tracks { display: flex; gap: 2px; }
+  .track-tab {
+    font: inherit; font-size: 13.5px; font-weight: 560; cursor: pointer;
+    background: none; border: none; border-bottom: 2px solid transparent;
+    padding: 11px 2px; margin-right: 22px; color: var(--ink-3);
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .track-tab:hover { color: var(--ink-2); }
+  .track-tab.on { color: var(--ink); border-bottom-color: var(--accent); }
+  .track-tab .cnt { font-family: var(--mono); font-size: 11px; background: var(--surface-2); color: var(--ink-3); padding: 1px 6px; border-radius: 999px; }
+  .track-tab.on .cnt { background: var(--accent-soft); color: var(--accent-ink); }
+  .crumb {
+    display: none; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-2);
+    background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
+    border-radius: 999px; padding: 4px 6px 4px 11px;
+  }
+  .crumb.show { display: inline-flex; }
+  .crumb .back { font: inherit; font-size: 12px; cursor: pointer; border: none; background: var(--surface); color: var(--accent-ink); border-radius: 999px; padding: 3px 10px; font-weight: 600; }
+  .crumb .back:hover { filter: brightness(.97); }
+
+  .view { min-height: 0; overflow: hidden; }
+  .cols { display: grid; min-height: 0; height: 100%; overflow: hidden; }
+  .cols.beh { grid-template-columns: 1fr; }
+  .cols.dec { grid-template-columns: minmax(250px, 320px) minmax(340px, 1fr); }
+  .beh-col { display: flex; flex-direction: column; }
+  .beh-col > .acc { flex: 1 1 auto; }
+  .col { min-height: 0; overflow: auto; padding: 16px; border-right: 1px solid var(--line); }
+  .col:last-child { border-right: none; }
+  .col-title { font-size: 11px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; margin: 0 0 12px; }
+  .hidden { display: none !important; }
+
+  /* path accordion */
+  .acc { display: flex; flex-direction: column; gap: 8px; max-width: 1180px; }
+  .arow {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 11px;
+    border-left: 3px solid var(--line-2); overflow: hidden;
+  }
+  .arow.k-changed { border-left-color: var(--bad); }
+  .arow.k-new { border-left-color: var(--accent); }
+  .arow.k-unchanged { border-left-color: var(--ink-3); }
+  .arow.open { box-shadow: var(--shadow); }
+  .ahead {
+    display: grid; grid-template-columns: 96px 1fr auto; gap: 14px; align-items: center;
+    width: 100%; text-align: left; font: inherit; cursor: pointer;
+    background: none; border: none; padding: 13px 15px;
+  }
+  .ahead:hover { background: var(--surface-2); }
+  .arow.open .ahead { border-bottom: 1px solid var(--line); }
+  .achev { color: var(--ink-3); font-size: 11px; transition: transform .15s ease; }
+  .arow.open .achev { transform: rotate(90deg); color: var(--accent); }
+  .abody { padding: 4px 15px 16px; }
+  .kind {
+    font-size: 10px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+    padding: 2px 7px; border-radius: 5px; display: inline-block; margin-bottom: 6px;
+  }
+  .kind.k-changed { background: var(--bad-soft); color: var(--bad); }
+  .kind.k-new { background: var(--accent-soft); color: var(--accent-ink); }
+  .kind.k-unchanged { background: var(--surface-2); color: var(--ink-3); }
+  .plabel { font-size: 13.5px; font-weight: 560; line-height: 1.35; display: block; }
+  .pdelta { font-size: 11.5px; margin-top: 6px; line-height: 1.45; display: block; }
+  .pdelta .was { color: var(--bad); }
+  .pdelta .now { color: var(--good); }
+  .pdelta .arrow { color: var(--ink-3); margin: 0 4px; }
+  .regtag { color: var(--ink-3); margin-left: 6px; }
+
+  /* path detail */
+  .dv {
+    display: flex; align-items: baseline; gap: 9px; margin: 2px 0 4px;
+    font-size: 12px; flex-wrap: wrap;
+  }
+  .dv-l { color: var(--bad); font-weight: 600; }
+  .dv code { font-family: var(--mono); font-size: 11.5px; background: var(--bad-soft); color: var(--bad); padding: 1px 6px; border-radius: 4px; }
+  .prov-tick {
+    margin-left: auto; font-size: 10px; font-weight: 600; letter-spacing: .03em;
+    color: var(--author); background: var(--author-soft); padding: 2px 7px; border-radius: 4px;
+    text-transform: none; cursor: help;
+  }
+  .cmp { display: grid; gap: 0; margin-top: 18px; }
+  .cmp.two { grid-template-columns: 1fr 1fr; gap: 16px; }
+  .cmp-side { min-width: 0; }
+  .cmp-head { display: flex; align-items: center; gap: 8px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; font-weight: 700; margin-bottom: 10px; padding-bottom: 7px; border-bottom: 1px solid var(--line); }
+  .cmp-head.was { color: var(--bad); }
+  .cmp-head.now { color: var(--good); }
+  .cmp-head .tail { font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--ink-3); font-size: 11.5px; }
+
+  .hop { display: grid; grid-template-columns: 24px 1fr; gap: 11px; padding: 6px 8px 6px 0; cursor: pointer; border-radius: 7px; transition: background .12s ease; }
+  .hop:hover { background: var(--surface-2); }
+  .hop.sel { background: var(--surface-2); }
+  /* the before-column is history: let it recede until hovered */
+  .cmp-side.was .hop { opacity: .62; }
+  .cmp-side.was .hop:hover, .cmp-side.was .hop.sel { opacity: 1; }
+  .hrail { position: relative; display: flex; justify-content: center; }
+  .hdot { width: 21px; height: 21px; border-radius: 50%; display: grid; place-items: center; font-family: var(--mono); font-size: 10.5px; font-weight: 700; background: var(--surface); border: 2px solid var(--line-2); color: var(--ink-3); z-index: 1; }
+  .hop .hdot { border-color: var(--line-2); color: var(--ink-3); }
+  .hop.bad .hdot { border-color: var(--bad); background: var(--bad-soft); color: var(--bad); }
+  .hop.good .hdot { border-color: var(--good); background: var(--good-soft); color: var(--good); }
+  .hline { position: absolute; top: 21px; bottom: -7px; width: 2px; background: var(--line); }
+  .hop:last-child .hline { display: none; }
+  .hbody { min-width: 0; padding-top: 2px; }
+  .hmain { font-size: 13.5px; line-height: 1.4; display: block; }
+  .hmain .kw { font-family: var(--mono); font-size: .88em; font-weight: 600; }
+  .hop.bad .hmain .kw { color: var(--bad); }
+  /* the note is a gloss: only present when the hop is engaged */
+  .hnote {
+    font-size: 12px; color: var(--ink-3); line-height: 1.45;
+    display: none; margin-top: 3px;
+  }
+  .hop:hover .hnote, .hop.sel .hnote { display: block; }
+  /* crossover: a quiet inline marker, not a pill */
+  .hlinks { display: none; gap: 12px; flex-wrap: wrap; margin-top: 5px; }
+  .hop:hover .hlinks, .hop.sel .hlinks { display: flex; }
+  .xlink {
+    font: inherit; font-size: 11.5px; font-weight: 560; cursor: pointer;
+    background: none; border: none; padding: 0;
+    color: var(--accent); border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+  .xlink:hover { border-bottom-color: var(--accent); }
+  /* a persistent dot marks that a hop HAS reasoning, without the label */
+  .hasWhy { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); margin-left: 7px; vertical-align: 1px; opacity: .55; }
+  .hop:hover .hasWhy, .hop.sel .hasWhy { opacity: 0; }
+
+  /* shared evidence — sticks to the bottom of the pane so clicking a hop
+     never scrolls the code out of view */
+  .ev-wrap {
+    margin-top: 18px; position: sticky; bottom: -16px;
+    background: var(--ground); padding: 10px 0 0;
+    border-top: 1px solid var(--line);
+  }
+  .ev-block { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface); }
+  .ev-file { display: flex; gap: 8px; align-items: center; font-family: var(--mono); font-size: 11.5px; color: var(--ink-2); padding: 8px 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .ev-file .fp { color: var(--ink); }
+  .ctx-badge { font-size: 9.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; background: var(--infer-soft); color: var(--infer); padding: 2px 6px; border-radius: 4px; }
+  pre.code { margin: 0; font-family: var(--mono); font-size: 12.5px; line-height: 1.6; overflow-x: auto; }
+  .cl { display: flex; }
+  .cl .ln { flex: none; width: 40px; text-align: right; padding: 0 10px 0 8px; color: var(--ink-3); user-select: none; font-variant-numeric: tabular-nums; border-right: 1px solid var(--line); }
+  .cl .ct { padding: 0 12px; white-space: pre; }
+  .cl.add { background: var(--add-bg); }
+  .cl.hl { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .cl.hl .ln { color: var(--accent-ink); font-weight: 700; }
+  .ev-empty { color: var(--ink-3); font-size: 12.5px; padding: 16px 2px; }
+
+  /* decision track */
+  #dec-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+  .ditem { display: grid; grid-template-columns: 22px 1fr; gap: 10px; width: 100%; text-align: left; font: inherit; cursor: pointer; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 11px; }
+  .ditem:hover { border-color: var(--line-2); }
+  .ditem.on { border-color: var(--accent); background: var(--accent-soft); }
+  .dnum { font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent); background: var(--accent-soft); border-radius: 6px; text-align: center; padding: 2px 0; }
+  .ditem.on .dnum { background: var(--surface); }
+  .dtitle { font-size: 13.5px; font-weight: 560; line-height: 1.35; }
+  .dmeta { display: flex; align-items: center; gap: 6px; margin-top: 5px; }
+  .sdot { width: 7px; height: 7px; border-radius: 50%; }
+  .sdot.author { background: var(--author); }
+  .sdot.infer { background: var(--infer-soft); border: 1px dashed var(--infer); }
+  .slabel { font-size: 10.5px; text-transform: uppercase; letter-spacing: .03em; font-weight: 600; }
+  .slabel.author { color: var(--author); }
+  .slabel.infer { color: var(--infer); }
+  .schip { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 999px; border: 1px solid transparent; }
+  .schip.author { background: var(--author-soft); color: var(--author); border-color: color-mix(in srgb, var(--author) 30%, transparent); }
+  .schip.infer { background: var(--infer-soft); color: var(--infer); border-color: color-mix(in srgb, var(--infer) 32%, transparent); border-style: dashed; }
+  .dd-title { font-size: 20px; font-weight: 640; letter-spacing: -.015em; margin: 12px 0 7px; text-wrap: balance; line-height: 1.28; }
+  .dd-chose { margin: 0 0 14px; font-size: 14.5px; line-height: 1.5; color: var(--ink); max-width: 56ch; }
+  .contrast {
+    display: flex; gap: 10px; align-items: baseline; margin-bottom: 18px;
+    font-size: 13px; line-height: 1.45; padding-left: 11px;
+    border-left: 2px solid color-mix(in srgb, var(--bad) 45%, transparent);
+  }
+  .contrast .ck { font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; color: var(--bad); flex: none; }
+  .contrast .cv { color: var(--ink-3); }
+  .contrast .strike { text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--bad) 60%, transparent); }
+  .declinks { display: flex; flex-direction: column; gap: 7px; align-items: flex-start; }
+  code { font-family: var(--mono); font-size: .87em; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
+  .lbl { font-size: 11px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; margin-bottom: 6px; }
+  .why { margin: 0; font-size: 14.5px; line-height: 1.6; max-width: 58ch; }
+  .qbox { border-left: 3px solid var(--author); background: var(--author-soft); padding: 9px 13px; border-radius: 0 8px 8px 0; margin-top: 13px; font-size: 12.5px; line-height: 1.55; color: var(--ink-2); }
+  .qbox .qs { display: block; font-size: 11px; color: var(--author); font-weight: 600; margin-top: 5px; }
+  .ibox { border-left: 3px solid var(--infer); background: var(--infer-soft); padding: 9px 13px; border-radius: 0 8px 8px 0; margin-top: 13px; font-size: 12.5px; line-height: 1.55; color: var(--ink-2); }
+  .ibox .qs { display: block; font-size: 11px; color: var(--infer); font-weight: 600; margin-top: 5px; }
+  .nbox { border-left: 3px solid var(--ink-3); background: var(--surface-2); padding: 9px 13px; border-radius: 0 8px 8px 0; margin-top: 13px; font-size: 12.5px; color: var(--ink-2); }
+
+  @media (prefers-reduced-motion: reduce) { .hop { transition: none; } }
+  @media (max-width: 1000px) {
+    .cols.beh, .cols.dec { grid-template-columns: 1fr; grid-auto-rows: min-content; overflow: auto; }
+    .app { height: auto; max-height: none; }
+    .col { border-right: none; border-bottom: 1px solid var(--line); }
+    .cmp.two { grid-template-columns: 1fr; }
+  }
+</style>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <span class="num" id="pr-num">#482</span>
+      <span class="title" id="pr-title">fix: skip records with an unrecognized category</span>
+      <span class="repo" id="pr-repo">example/orders-service</span>
+    </div>
+    <div class="spacer"></div>
+    <button class="theme-toggle" id="theme-toggle">◐ Theme</button>
+  </header>
+  <nav class="trackbar">
+    <div class="tracks">
+      <button class="track-tab on" data-track="beh">Behaviour <span class="cnt" id="c-beh">3</span></button>
+      <button class="track-tab" data-track="dec">Decisions <span class="cnt" id="c-dec">6</span></button>
+    </div>
+    <div class="spacer"></div>
+    <div class="crumb" id="crumb"><span id="crumb-text"></span><button class="back" id="crumb-back">← back</button></div>
+  </nav>
+  <div class="view">
+    <div class="cols beh" id="view-beh">
+      <section class="col beh-col">
+        <h2 class="col-title">Paths affected by this change</h2>
+        <div id="path-acc" class="acc"></div>
+        <div class="ev-wrap" id="ev-wrap"><div class="ev-empty">Click any step to see the code that runs it.</div></div>
+      </section>
+    </div>
+    <div class="cols dec hidden" id="view-dec">
+      <aside class="col"><h2 class="col-title">Decisions made</h2><ol id="dec-list"></ol></aside>
+      <section class="col" id="dec-detail"></section>
+    </div>
+  </div>
+</div>
+<script id="data-holder" type="application/json">
+{
+  "pr": { "number": "482", "title": "fix: skip records with an unrecognized category", "repo": "example/orders-service" },
+  "paths": [
+    {
+      "id": "p1",
+      "kind": "changed",
+      "label": "Record arrives with an unrecognized category",
+      "sub": "the upstream client's unknown-enum sentinel",
+      "beforeText": "threw, then poison-retry looped",
+      "afterText": "skipped, logged, metered",
+      "beforeProvenance": "author",
+      "beforeNote": "Before-state is the author's own root-cause account, not reconstruction.",
+      "beforeSrc": "PR description · Root cause",
+      "divergeAt": 1,
+      "divergeNote": "order-subscription.ts:279 — the guard that is the fix",
+      "before": [
+        { "main": "Event arrives · <span class='kw'>category = \"__unknown__\"</span>", "note": "adapters cast the sentinel straight into the domain type", "ev": "sentinel" },
+        { "main": "flows into <span class='kw'>categoryLabel</span>", "note": "exhaustive switch, no arm matches", "ev": "switch", "bad": true, "decisions": ["d5"] },
+        { "main": "<span class='kw'>throws</span> on the unrecognized value", "note": "handler logs and rethrows", "ev": "switch", "bad": true },
+        { "main": "queue redelivers → <span class='kw'>poison-retry loop</span>", "note": "the error-tracking monitor fires", "ev": "switch", "bad": true, "terminal": true }
+      ],
+      "after": [
+        { "main": "Event arrives · <span class='kw'>category = \"__unknown__\"</span>", "note": "same input reaches the subscription", "ev": "guard" },
+        { "main": "<span class='kw'>shouldSkipUnrecognizedCategory</span> → true", "note": "value is not in RECOGNIZED_CATEGORIES", "ev": "isRec", "decisions": ["d1", "d2"] },
+        { "main": "<span class='kw'>logger.warn</span> + skip metric", "note": "the skip is observable, not silent", "ev": "skip", "decisions": ["d4"] },
+        { "main": "<span class='kw'>return</span> — no record fetch, no downstream call, no throw", "note": "message acknowledged; nothing downstream runs", "ev": "guard", "good": true, "terminal": true }
+      ]
+    },
+    {
+      "id": "p2",
+      "kind": "new",
+      "label": "A LINKED record has an unrecognized category",
+      "sub": "during event enrichment",
+      "afterText": "treated as absent",
+      "divergeAt": null,
+      "after": [
+        { "main": "Enriching an event, fetch the <span class='kw'>linked record</span>", "note": "adds related-record properties to the current event", "ev": "linked" },
+        { "main": "Linked record carries the sentinel category", "note": "same bad value, on a neighbouring record", "ev": "linked", "bad": true },
+        { "main": "<span class='kw'>shouldSkip</span> true → stays <span class='kw'>null</span>", "note": "treated as absent rather than throwing mid-enrichment", "ev": "linked", "decisions": ["d3"] },
+        { "main": "Current event ships <span class='kw'>without</span> linked-record data", "note": "graceful degradation — the current event is not lost", "ev": "linked", "good": true, "terminal": true }
+      ]
+    },
+    {
+      "id": "p3",
+      "kind": "unchanged",
+      "label": "Recognized category",
+      "sub": "standard / express / bulk / null",
+      "afterText": "processed normally",
+      "regression": true,
+      "divergeAt": null,
+      "after": [
+        { "main": "Event arrives · <span class='kw'>category = \"standard\"</span>", "note": "or null — a valid domain value", "ev": "guard" },
+        { "main": "<span class='kw'>isRecognizedCategory</span> → true", "note": "in the recognized set; null counts too", "ev": "isRec", "decisions": ["d6"] },
+        { "main": "guard returns false → falls through", "note": "no skip, no metric", "ev": "guard" },
+        { "main": "Record fetched, enriched, forwarded downstream", "note": "identical to pre-PR behaviour", "ev": "guard", "good": true, "terminal": true }
+      ]
+    }
+  ],
+  "decisions": [
+    {
+      "id": "d1",
+      "title": "Skip unrecognized categories — don't throw",
+      "source": "author",
+      "chose": "Detect the out-of-union value and pass the record over.",
+      "rejected": "Let it reach the exhaustive <code>switch</code> and throw, or widen the union to accept it",
+      "why": "The upstream service emits categories outside our closed union; its generated client surfaces them as an unknown-enum sentinel that adapters cast in blindly. That value hit an exhaustive switch and threw — and since the handler logs-and-rethrows, it became a poison-message retry loop. The upstream team confirmed these records should be ignored.",
+      "quote": "We confirmed with the upstream team that these records should be ignored / passed over.",
+      "quoteSrc": "PR description · Root cause",
+      "paths": ["p1"]
+    },
+    {
+      "id": "d2",
+      "title": "Guard once in the shared business layer, not per adapter",
+      "source": "author",
+      "chose": "Put the check in <code>OrderSubscription</code>, which every adapter funnels through.",
+      "rejected": "Validate in each adapter — queue handlers, the poller, the linked-record fetch",
+      "why": "The unsafe cast happens in several adapters, but they all converge on the subscription before business logic runs. One choke point covers every entry point — created, updated, cancelled, fulfilled, refunded — instead of scattering the same validation and missing one.",
+      "quote": "OrderSubscription — the single business layer all adapters funnel through — now skips records with an unrecognized category at every entry point.",
+      "quoteSrc": "PR description · Change",
+      "paths": ["p1"]
+    },
+    {
+      "id": "d3",
+      "title": "Treat an unrecognized LINKED record as absent",
+      "source": "author",
+      "chose": "Behave as if there is no linked record.",
+      "rejected": "Throw while building linked-record event properties",
+      "why": "Enrichment reads the record's linked sibling. If that record carries a sentinel category, the same switch would throw mid-enrichment — turning an unprocessable neighbour into a failure of the current event. Treating it as absent degrades gracefully: the current event still ships.",
+      "quote": "Treat a linked record with an unrecognized category as if there were none, rather than throwing while building its event properties.",
+      "quoteSrc": "code comment · order-subscription.ts:643",
+      "paths": ["p2"]
+    },
+    {
+      "id": "d4",
+      "title": "Make every skip observable",
+      "source": "author",
+      "chose": "Warning log plus a new <code>record_skipped_unrecognized_category</code> metric.",
+      "rejected": "Skip silently",
+      "why": "A silent skip and a lost message look identical from outside — and this path exists because an upstream contract is leaking. The metric turns 'we're dropping records' into a rate the team can alarm on and hand back upstream. The skip is a symptom worth watching, not a fix to forget.",
+      "quote": "Skips are observable: a warning log + a new record_skipped_unrecognized_category metric.",
+      "quoteSrc": "PR description · Change",
+      "paths": ["p1"]
+    },
+    {
+      "id": "d5",
+      "title": "Leave the exhaustive switch as an unreachable invariant",
+      "source": "author",
+      "chose": "Keep <code>categoryLabel</code>'s throwing switch untouched.",
+      "rejected": "Add a <code>default</code> arm to absorb unknown values",
+      "why": "The upstream guard means the switch can no longer be reached with a bad value. Softening it with a default would silently absorb future real bugs; keeping it strict documents the invariant 'everything reaching here is recognized' and still throws loudly if a different path ever breaks that.",
+      "quote": "The exhaustive switch in categoryLabel is left as-is (now an unreachable defensive invariant).",
+      "quoteSrc": "PR description · Change",
+      "note": "A deliberate non-change — invisible in the diff.",
+      "paths": ["p1"]
+    },
+    {
+      "id": "d6",
+      "title": "Count null as a recognized category",
+      "source": "infer",
+      "chose": "Include <code>null</code> in the recognized set, so it processes normally.",
+      "rejected": "Treat null as unrecognized and skip it too",
+      "why": "<code>null</code> is a legitimate member of <code>OrderCategory</code> ('no specific category'), distinct from the sentinel string signalling an out-of-union value. Skipping null would drop valid records that simply have no category assigned.",
+      "inferNote": "The code marks null as recognized with an inline comment, but the reasoning — that null is a valid domain value unlike the sentinel — is reconstructed from the type definition. The PR body doesn't discuss null, and the rejected alternative is illustrative.",
+      "inferSrc": "inferred from order.ts:47 + the recognized set at :54-60",
+      "paths": ["p3"]
+    }
+  ],
+  "code": {
+    "sentinel": { "file": "src/models/order.ts", "lines": "47-53", "hl": [49, 53], "rows": [
+      ["47", "export type OrderCategory = \"standard\" | \"express\" | \"bulk\" | null;", 0],
+      ["49", "// The upstream service can emit values outside this set (surfaced by", 1],
+      ["50", "// the unknown-enum sentinel in its generated client), which adapters", 1],
+      ["51", "// cast blindly into `OrderCategory`. Per the upstream team, records", 1],
+      ["52", "// with an unrecognized category should be ignored rather than", 1],
+      ["53", "// processed ...", 1]
+    ]},
+    "switch": { "file": "src/models/order.ts", "lines": "~137", "context": true, "hl": [], "rows": [
+      ["—", "// categoryLabel — NOT changed by this PR.", 1],
+      ["—", "// Exhaustive switch over OrderCategory, no default arm:", 1],
+      ["—", "//   case \"standard\": ... case \"bulk\": ...", 1],
+      ["—", "//   default: throw new Error(`unhandled category ...`)", 1],
+      ["—", "// Before: the sentinel reached here and threw.", 1],
+      ["—", "// After: the upstream guard means it never does.", 1]
+    ]},
+    "isRec": { "file": "src/models/order.ts", "lines": "54-68", "hl": [54, 68], "rows": [
+      ["54", "const RECOGNIZED_CATEGORIES = new Set<OrderCategory>([", 1],
+      ["55", "  \"standard\", \"express\", \"bulk\",", 1],
+      ["59", "  null /* no specific category */,", 1],
+      ["60", "]);", 1],
+      ["66", "export function isRecognizedCategory(category: OrderCategory): boolean {", 1],
+      ["67", "  return RECOGNIZED_CATEGORIES.has(category);", 1],
+      ["68", "}", 1]
+    ]},
+    "skip": { "file": "src/subscription/order-subscription.ts", "lines": "137-145", "hl": [138, 144], "rows": [
+      ["137", "  private shouldSkipUnrecognizedCategory(record: Order): boolean {", 1],
+      ["138", "    if (isRecognizedCategory(record.category)) return false;", 1],
+      ["139", "    this.logger.warn(", 1],
+      ["140", "      { order_id: record.id, category: record.category },", 1],
+      ["141", "      \"skipping record with unrecognized category\",", 1],
+      ["142", "    );", 1],
+      ["143", "    this.metrics.increment(\"record_skipped_unrecognized_category\");", 1],
+      ["144", "    return true;", 1]
+    ]},
+    "guard": { "file": "src/subscription/order-subscription.ts", "lines": "276-281", "hl": [279, 279], "rows": [
+      ["276", "  async orderCreated({ order: record, occurred }): Promise<void> {", 0],
+      ["277", "    await this.trace(\"orderCreated\", async (span) => {", 0],
+      ["278", "      span?.setTag(\"order_id\", record.id);", 0],
+      ["279", "      if (this.shouldSkipUnrecognizedCategory(record)) return;", 1],
+      ["280", "      const customer = await this.orderCustomer(record);", 0],
+      ["281", "      if (!customer) return;", 0]
+    ]},
+    "linked": { "file": "src/subscription/order-subscription.ts", "lines": "640-647", "hl": [643, 646], "rows": [
+      ["640", "      const linked = raw ? orderFromClient(raw) : null;", 0],
+      ["641", "      let linkedRecord: LinkedRecordEntry | null = null;", 0],
+      ["643", "      // Treat a linked record with an unrecognized category as if there", 1],
+      ["644", "      // were none, rather than throwing while building properties.", 1],
+      ["646", "      if (linked && !this.shouldSkipUnrecognizedCategory(linked)) {", 1],
+      ["647", "        const [details, address] = await Promise.all([", 0]
+    ]}
+  }
+}
+</script>
+<script id="logic">
+(function () {
+  const D = JSON.parse(document.getElementById("data-holder").textContent);
+  const PATHS = D.paths, DECS = D.decisions, CODE = D.code;
+  let track = "beh", curPath = PATHS[0].id, curDec = DECS[0].id, ret = null;
+
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const pathById = (id) => PATHS.find(p => p.id === id);
+  const decById = (id) => DECS.find(d => d.id === id);
+  const KIND = { changed: "changed", new: "new", unchanged: "unchanged" };
+
+  $("pr-num").textContent = "#" + D.pr.number;
+  $("pr-title").textContent = D.pr.title;
+  $("pr-repo").textContent = D.pr.repo;
+  $("c-beh").textContent = PATHS.length;
+  $("c-dec").textContent = DECS.length;
+
+  function setTrack(t, opts) {
+    track = t;
+    document.querySelectorAll(".track-tab").forEach(b => b.classList.toggle("on", b.dataset.track === t));
+    $("view-beh").classList.toggle("hidden", t !== "beh");
+    $("view-dec").classList.toggle("hidden", t !== "dec");
+    const crumb = $("crumb");
+    if (opts && opts.from) {
+      $("crumb-text").innerHTML = opts.from;
+      crumb.classList.add("show");
+    } else if (!opts || !opts.keepCrumb) {
+      crumb.classList.remove("show");
+      ret = null;
+    }
+  }
+
+  /* ---------- behaviour track ---------- */
+  function renderAccordion() {
+    const el = $("path-acc");
+    el.innerHTML = "";
+    PATHS.forEach(p => {
+      const open = p.id === curPath;
+      const row = document.createElement("div");
+      row.className = `arow k-${KIND[p.kind]}` + (open ? " open" : "");
+      row.dataset.path = p.id;
+
+      const delta = p.kind === "changed"
+        ? `<span class="pdelta"><span class="was">${esc(p.beforeText)}</span><span class="arrow">→</span><span class="now">${esc(p.afterText)}</span></span>`
+        : `<span class="pdelta"><span class="now">${esc(p.afterText)}</span>${p.regression ? '<span class="regtag">↺ regression check</span>' : ""}</span>`;
+
+      row.innerHTML = `
+        <button class="ahead" aria-expanded="${open}">
+          <span class="kind k-${KIND[p.kind]}">${p.kind}</span>
+          <span><span class="plabel">${esc(p.label)}</span>${delta}</span>
+          <span class="achev">▶</span>
+        </button>
+        <div class="abody">${open ? pathBody(p) : ""}</div>`;
+
+      row.querySelector(".ahead").addEventListener("click", () => {
+        curPath = (curPath === p.id) ? null : p.id;
+        renderAccordion();
+      });
+      if (!open) row.querySelector(".abody").style.display = "none";
+      el.appendChild(row);
+    });
+    bindHops();
+  }
+
+  function pathBody(p) {
+    const isCmp = p.kind === "changed" && p.before;
+    const diverge = (isCmp && p.divergeAt != null)
+      ? `<div class="dv"><span class="dv-l">diverges at step ${p.divergeAt + 1}</span><code>${esc(p.divergeNote || "")}</code></div>` : "";
+    if (!isCmp) {
+      return `${diverge}<div class="cmp"><div class="cmp-side">
+        ${p.after.map((h, i) => hopHtml(h, i, "after", p.id)).join("")}</div></div>`;
+    }
+    return `${diverge}<div class="cmp two">
+      <div class="cmp-side was"><div class="cmp-head was">before <span class="tail">on main</span>${
+        p.beforeProvenance === "author" ? '<span class="prov-tick" title="' + esc((p.beforeNote || "") + " — " + (p.beforeSrc || "")) + '">✎ author</span>' : ""
+      }</div>${p.before.map((h, i) => hopHtml(h, i, "before", p.id)).join("")}</div>
+      <div class="cmp-side"><div class="cmp-head now">after <span class="tail">this PR</span></div>
+        ${p.after.map((h, i) => hopHtml(h, i, "after", p.id)).join("")}</div></div>`;
+  }
+
+  function bindHops() {
+    document.querySelectorAll("#path-acc .hop").forEach(row => {
+      row.addEventListener("click", (e) => {
+        if (e.target.closest(".xlink")) return;
+        selHop(row.dataset.path, row.dataset.side, +row.dataset.idx);
+      });
+    });
+    document.querySelectorAll("#path-acc [data-goto-dec]").forEach(b =>
+      b.addEventListener("click", () => crossToDecision(b.dataset.gotoDec)));
+  }
+
+  function hopHtml(h, i, side, pathId) {
+    const cls = ["hop"];
+    if (h.bad) cls.push("bad");
+    if (h.good) cls.push("good");
+    const glyph = h.good ? "✓" : (h.bad ? "!" : i + 1);
+    const n = (h.decisions || []).length;
+    const links = (h.decisions || []).map(id =>
+      `<button class="xlink" data-goto-dec="${id}">why?</button>`).join("");
+    const linksLabelled = n > 1
+      ? (h.decisions || []).map((id, k) => {
+          const d = decById(id);
+          const short = d ? d.title.split(" ").slice(0, 3).join(" ") : id;
+          return `<button class="xlink" data-goto-dec="${id}">why · ${esc(short)}…</button>`;
+        }).join("")
+      : links;
+    return `<div class="${cls.join(" ")}" data-side="${side}" data-idx="${i}" data-path="${pathId}">
+      <span class="hrail"><span class="hdot">${glyph}</span><span class="hline"></span></span>
+      <span class="hbody">
+        <span class="hmain">${h.main}${n ? '<span class="hasWhy"></span>' : ""}</span>
+        <span class="hnote">${esc(h.note || "")}</span>
+        ${n ? `<span class="hlinks">${linksLabelled}</span>` : ""}
+      </span></div>`;
+  }
+
+  function selHop(pathId, side, idx) {
+    document.querySelectorAll("#path-acc .hop").forEach(r =>
+      r.classList.toggle("sel",
+        r.dataset.path === pathId && r.dataset.side === side && +r.dataset.idx === idx));
+    const p = pathById(pathId);
+    const h = p && (p[side] || [])[idx];
+    renderCode($("ev-wrap"), h && h.ev);
+  }
+
+  function renderCode(slot, evId) {
+    if (!slot) return;
+    const c = evId && CODE[evId];
+    if (!c) { slot.innerHTML = `<div class="ev-empty">No code anchored to this step.</div>`; return; }
+    const rows = c.rows.map(([n, t, add]) => {
+      const hl = (c.hl && c.hl.length && +n >= c.hl[0] && +n <= c.hl[1]) ? " hl" : "";
+      return `<div class="cl${add ? " add" : ""}${hl}"><span class="ln">${n}</span><span class="ct">${esc(t)}</span></div>`;
+    }).join("");
+    slot.innerHTML = `<div class="ev-block">
+      <div class="ev-file"><span class="fp">${esc(c.file)}</span><span>${esc(c.lines)}</span>
+      ${c.context ? '<span class="ctx-badge">context · not under review</span>' : ""}</div>
+      <pre class="code">${rows}</pre></div>`;
+  }
+
+  /* ---------- decision track ---------- */
+  function renderDecList() {
+    const ol = $("dec-list");
+    ol.innerHTML = "";
+    DECS.forEach((d, i) => {
+      const li = document.createElement("li");
+      const b = document.createElement("button");
+      b.className = "ditem" + (d.id === curDec ? " on" : "");
+      b.innerHTML = `<span class="dnum">${i + 1}</span><span>
+        <span class="dtitle">${esc(d.title)}</span>
+        <span class="dmeta"><span class="sdot ${d.source}"></span>
+        <span class="slabel ${d.source}">${d.source === "author" ? "author-stated" : "AI-inferred"}</span></span></span>`;
+      b.addEventListener("click", () => { curDec = d.id; renderDecList(); renderDec(); });
+      li.appendChild(b);
+      ol.appendChild(li);
+    });
+  }
+
+  function renderDec() {
+    const d = decById(curDec);
+    const chip = d.source === "author"
+      ? `<span class="schip author">✎ author-stated</span>`
+      : `<span class="schip infer">⚙ AI-inferred</span>`;
+    const prov = d.source === "author"
+      ? `<div class="qbox">"${d.quote}"<span class="qs">— ${esc(d.quoteSrc)}</span></div>`
+      : `<div class="ibox">${d.inferNote}<span class="qs">${esc(d.inferSrc)}</span></div>`;
+    const note = d.note ? `<div class="nbox">${esc(d.note)}</div>` : "";
+    const back = (d.paths || []).map(pid => {
+      const p = pathById(pid);
+      return `<button class="xlink" data-goto-path="${pid}">▶ see in behaviour — ${esc(p ? p.label.slice(0, 30) : pid)}${p && p.label.length > 30 ? "…" : ""}</button>`;
+    }).join("");
+
+    $("dec-detail").innerHTML = `${chip}
+      <h1 class="dd-title">${esc(d.title)}</h1>
+      <p class="dd-chose">${d.chose}</p>
+      <div class="contrast">
+        <span class="ck">instead of</span>
+        <span class="cv"><span class="strike">${d.rejected}</span></span>
+      </div>
+      <div class="lbl">Why it matters</div><p class="why">${d.why}</p>
+      ${prov}${note}
+      <div class="lbl" style="margin-top:20px">Behaviour it shapes</div>
+      <div class="declinks">${back}</div>`;
+
+    $("dec-detail").querySelectorAll("[data-goto-path]").forEach(b =>
+      b.addEventListener("click", () => crossToPath(b.dataset.gotoPath, d.id)));
+  }
+
+  /* ---------- crossovers ---------- */
+  function crossToDecision(id) {
+    ret = { track: "beh", path: curPath };
+    curDec = id;
+    renderDecList(); renderDec();
+    const p = pathById(ret.path);
+    setTrack("dec", { from: `from behaviour · <strong>${esc(p ? p.label : "")}</strong>` });
+  }
+  function crossToPath(pid, fromDec) {
+    ret = { track: "dec", dec: fromDec };
+    curPath = pid;
+    renderAccordion();
+    const d = decById(fromDec);
+    setTrack("beh", { from: `from decision · <strong>${esc(d ? d.title : "")}</strong>` });
+    const p = pathById(pid);
+    for (const side of ["after", "before"]) {
+      const idx = (p[side] || []).findIndex(h => (h.decisions || []).includes(fromDec));
+      if (idx >= 0) { selHop(pid, side, idx); break; }
+    }
+  }
+  $("crumb-back").addEventListener("click", () => {
+    if (!ret) { setTrack(track); return; }
+    if (ret.track === "beh") { curPath = ret.path; renderAccordion(); setTrack("beh"); }
+    else { curDec = ret.dec; renderDecList(); renderDec(); setTrack("dec"); }
+  });
+
+  document.querySelectorAll(".track-tab").forEach(b =>
+    b.addEventListener("click", () => setTrack(b.dataset.track)));
+  $("theme-toggle").addEventListener("click", () => {
+    const r = document.documentElement, c = r.getAttribute("data-theme");
+    const dark = c ? c === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    r.setAttribute("data-theme", dark ? "light" : "dark");
+  });
+
+  renderAccordion(); renderDecList(); renderDec();
+})();
+</script>
