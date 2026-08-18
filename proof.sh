@@ -5,14 +5,15 @@
 #   gather PR inputs → generate walkthrough JSON (Claude on Bedrock)
 #                    → ingest real diff → validate → render self-contained HTML
 #
-# Step 2 (generate) is the only step that calls a model; every other step is a
-# pure node script with no dependencies. Pass --data to inject pre-generated
-# JSON and skip the model call — used for prompt-tuning and for testing the
-# mechanical pipeline where Bedrock creds are unavailable.
+# Step 2 (generate) is the only step that calls a model; it invokes Claude on
+# Bedrock directly (aws bedrock-runtime invoke-model), so it needs only AWS
+# credentials — OIDC in CI, the ambient profile locally. Every other step is a
+# pure node script. Pass --data to inject pre-generated JSON and skip the model
+# call — used for prompt-tuning and for testing the mechanical pipeline.
 #
 # Usage:
-#   proof.sh <pr-number> [--repo owner/name] [--data file.json]
-#            [--model id] [--prompt file] [--out dir] [--keep-tmp]
+#   proof.sh <pr-number> [--repo owner/name] [--data file.json] [--model id]
+#            [--max-tokens n] [--prompt file] [--out dir] [--keep-tmp]
 #
 # Exit codes:
 #   0  valid walkthrough rendered to <out>/pr-<n>.html
@@ -27,6 +28,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO=""
 DATA=""
 MODEL="${ANTHROPIC_MODEL:-us.anthropic.claude-sonnet-4-6[1m]}"
+MAX_TOKENS="${PROOF_MAX_TOKENS:-16384}"
 PROMPT="$HERE/docs/generation-prompt.md"
 OUT="$HERE/prototype"
 KEEP_TMP=0
@@ -38,11 +40,12 @@ while [ $# -gt 0 ]; do
     --repo)   REPO="$2"; shift 2 ;;
     --data)   DATA="$2"; shift 2 ;;
     --model)  MODEL="$2"; shift 2 ;;
+    --max-tokens) MAX_TOKENS="$2"; shift 2 ;;
     --prompt) PROMPT="$2"; shift 2 ;;
     --out)    OUT="$2"; shift 2 ;;
     --keep-tmp) KEEP_TMP=1; shift ;;
     -h|--help)
-      sed -n '3,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      sed -n '3,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       exit 0 ;;
     -*) echo "❌ unknown flag: $1" >&2; exit 2 ;;
     *)  PR="$1"; shift ;;
@@ -90,7 +93,11 @@ if [ -n "$DATA" ]; then
   [ -r "$DATA" ] || { echo "❌ --data file not readable: $DATA" >&2; exit 2; }
   cp "$DATA" "$DATA_JSON"
 else
-  echo "· [2/5] generate — claude ($MODEL)"
+  # Bedrock takes a plain inference-profile id. The harness may hand us the
+  # model in gateway form (claude/us.anthropic.…) with a context-beta suffix
+  # (…-opus-4-8[1m]); strip both the prefix and the trailing "[...]".
+  MODEL_ID="${MODEL%%\[*}"; MODEL_ID="${MODEL_ID#claude/}"
+  echo "· [2/5] generate — bedrock ($MODEL_ID)"
   # Commit messages are author-stated provenance; the generation prompt mines
   # them, so inline the full body of every commit on the branch.
   COMMITS="$(git -C "$HERE" log "${BASE_SHA}..${HEAD_SHA}" --format='%h %s%n%b' 2>/dev/null || echo '(commit log unavailable — repo not checked out at these SHAs)')"
@@ -122,22 +129,44 @@ else
     echo "Emit ONLY the walkthrough JSON object — no prose, no markdown fence around it."
   } > "$PROMPT_FILE"
 
-  STREAM="$TMP/stream.jsonl"
-  CLAUDE_CODE_USE_BEDROCK="${CLAUDE_CODE_USE_BEDROCK:-1}" ANTHROPIC_MODEL="$MODEL" \
-    timeout -k 30s 600s \
-      claude -p --bare --verbose --tools "" --effort medium \
-        --output-format stream-json < "$PROMPT_FILE" \
-        > "$STREAM" 2>"$TMP/claude-stderr.txt" || true
+  # Call Bedrock directly rather than through `claude -p`: the CLI inherits an
+  # org's managed settings / gateway config when run inside another Claude Code
+  # session, which silently overrides CLAUDE_CODE_USE_BEDROCK. A raw InvokeModel
+  # depends only on AWS creds (OIDC in CI, the ambient profile locally).
+  #
+  BODY="$TMP/bedrock-request.json"
+  RESP="$TMP/bedrock-response.json"
+  jq -n --rawfile prompt "$PROMPT_FILE" --argjson max "$MAX_TOKENS" \
+    '{anthropic_version: "bedrock-2023-05-31", max_tokens: $max,
+      messages: [{role: "user", content: $prompt}]}' > "$BODY"
 
-  if [ ! -s "$STREAM" ]; then
-    echo "❌ claude produced no output — likely auth or startup failure:" >&2
-    cat "$TMP/claude-stderr.txt" >&2
+  # invoke-model is synchronous: the socket stays open for the whole generation,
+  # which for a large diff exceeds the AWS CLI's 60s default read timeout. Disable
+  # the CLI's own timeout and let the outer `timeout` wrapper bound the call.
+  timeout -k 30s 600s \
+    aws bedrock-runtime invoke-model \
+      --region "${AWS_REGION:-us-west-2}" \
+      --cli-read-timeout 0 --cli-connect-timeout 15 \
+      --model-id "$MODEL_ID" \
+      --body "fileb://$BODY" \
+      "$RESP" > "$TMP/aws-stdout.txt" 2>"$TMP/aws-stderr.txt" || true
+
+  if [ ! -s "$RESP" ]; then
+    echo "❌ bedrock returned no response — likely auth, region, or model-access failure:" >&2
+    cat "$TMP/aws-stderr.txt" >&2
     exit 3
   fi
 
-  # The clean result is the success result event's text. Strip a leading/trailing
-  # ```json fence if the model wrapped the object despite instructions.
-  jq -r 'select(.type == "result" and .subtype == "success") | .result' "$STREAM" \
+  # A hard token cap truncates mid-object; the JSON parse below would fail with a
+  # misleading message, so name the real cause here.
+  if [ "$(jq -r '.stop_reason // ""' "$RESP")" = "max_tokens" ]; then
+    echo "❌ model hit max_tokens ($MAX_TOKENS) — output truncated. Raise --max-tokens." >&2
+    exit 3
+  fi
+
+  # Extract the assistant text. Strip a leading/trailing ```json fence if the
+  # model wrapped the object despite instructions.
+  jq -r '.content[0].text // ""' "$RESP" \
     | sed '1{/^```/d;}; ${/^```$/d;}' > "$DATA_JSON" || true
 
   if ! jq empty "$DATA_JSON" 2>/dev/null || [ ! -s "$DATA_JSON" ]; then

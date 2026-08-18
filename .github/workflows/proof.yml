@@ -91,17 +91,13 @@ jobs:
         with:
           node-version: "24"
 
-      - name: Install Claude Code CLI
-        if: steps.gate.outputs.skipped == 'false'
-        # Pinned: <2.1.163 hangs after the final result once stdin closes, and
-        # proof.sh pipes the prompt in on stdin. Matches the ai-pr-review pin.
-        run: npm install -g @anthropic-ai/claude-code@2.1.219
-
       - name: Run proof pipeline
         id: proof
         if: steps.gate.outputs.skipped == 'false'
+        # proof.sh calls `aws bedrock-runtime invoke-model` directly — no Claude
+        # CLI, no CLAUDE_CODE_USE_BEDROCK. The AWS CLI is preinstalled on the
+        # runner; the OIDC step above supplies the credentials.
         env:
-          CLAUDE_CODE_USE_BEDROCK: "1"
           AWS_REGION: us-west-2
           ANTHROPIC_MODEL: ${{ env.MODEL }}
           GH_TOKEN: ${{ github.token }}
