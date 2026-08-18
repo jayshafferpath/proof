@@ -1,0 +1,174 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+name: proof walkthrough
+
+# Generates a decision-spine walkthrough for the PR, validates it, and either
+# uploads the rendered HTML as an artifact (success) or posts the validation
+# errors as a PR comment (failure). The model step runs on AWS Bedrock via OIDC,
+# reusing the org ai-pr-review auth pattern — no API-key secret.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# One run per PR; a new push cancels the in-flight run rather than racing it.
+concurrency:
+  group: proof-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+
+jobs:
+  walkthrough:
+    name: proof walkthrough
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-proof') }}
+    runs-on: ubuntu-latest
+    # A proof failure must never block the PR check — this is an explanatory
+    # aid, not a gate on the author's code.
+    continue-on-error: true
+    timeout-minutes: 18
+    env:
+      # The generation model. Must be permitted by the assumed IAM role's
+      # bedrock:InvokeModel grant (see the allowlist gate below).
+      MODEL: us.anthropic.claude-sonnet-4-6[1m]
+      # Skip PRs whose diff is too large to produce a useful walkthrough,
+      # matching the ai-pr-review gate. additions + deletions.
+      MAX_DIFF_LINES: "1500"
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      COMMENT_MARKER: "<!-- proof-walkthrough -->"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Validate model against approved allowlist
+        # Fail fast with a clear message rather than letting Bedrock reject the
+        # InvokeModel call deep in the generate step. Brackets escaped: an
+        # unescaped [1m] is a glob character class, so the literal profile ID
+        # would fall through to the reject branch.
+        run: |
+          set -euo pipefail
+          case "$MODEL" in
+            us.anthropic.claude-opus-4-7|us.anthropic.claude-sonnet-4-6|us.anthropic.claude-haiku-4-5|us.anthropic.claude-sonnet-4-6\[1m\])
+              echo "✅ Model '$MODEL' is in the approved allowlist" ;;
+            *)
+              echo "❌ Model '$MODEL' is not permitted by the IAM role's bedrock:InvokeModel grant." >&2
+              exit 1 ;;
+          esac
+
+      - name: Size gate
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          LINES=$(gh pr diff "$PR_NUMBER" --repo "$REPO" | grep -cE '^[+-]' || true)
+          echo "diff lines: $LINES (cap $MAX_DIFF_LINES)"
+          if [ "$LINES" -gt "$MAX_DIFF_LINES" ]; then
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::PR diff ($LINES lines) exceeds cap ($MAX_DIFF_LINES); skipping proof walkthrough."
+          else
+            echo "skipped=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure AWS credentials (OIDC)
+        if: steps.gate.outputs.skipped == 'false'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # Same Bedrock-backed role the org ai-pr-review action uses. proof
+          # needs its own grant or assume access to this one — see
+          # .plans/ci-run-for-pr.md (the IAM prerequisite).
+          role-to-assume: arn:aws:iam::940482430938:role/ai-pr-review
+          aws-region: us-west-2
+          audience: sts.amazonaws.com
+
+      - name: Set up Node.js
+        if: steps.gate.outputs.skipped == 'false'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install Claude Code CLI
+        if: steps.gate.outputs.skipped == 'false'
+        # Pinned: <2.1.163 hangs after the final result once stdin closes, and
+        # proof.sh pipes the prompt in on stdin. Matches the ai-pr-review pin.
+        run: npm install -g @anthropic-ai/claude-code@2.1.219
+
+      - name: Run proof pipeline
+        id: proof
+        if: steps.gate.outputs.skipped == 'false'
+        env:
+          CLAUDE_CODE_USE_BEDROCK: "1"
+          AWS_REGION: us-west-2
+          ANTHROPIC_MODEL: ${{ env.MODEL }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+          # proof.sh exit codes: 0 valid+rendered · 1 validation failed · 3 generation failed.
+          # Capture stdout+stderr so a validation failure (exit 1) can be posted
+          # as the PR comment, while still echoing to the runner log.
+          set +e
+          ./proof.sh "$PR_NUMBER" --out "$RUNNER_TEMP/proof" 2>&1 | tee "$RUNNER_TEMP/proof-log.txt"
+          CODE=${PIPESTATUS[0]}
+          set -e
+          echo "exit-code=$CODE" >> "$GITHUB_OUTPUT"
+          exit "$CODE"
+
+      - name: Upload walkthrough artifact
+        if: steps.gate.outputs.skipped == 'false' && steps.proof.outputs.exit-code == '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: proof-walkthrough-pr-${{ env.PR_NUMBER }}
+          path: ${{ runner.temp }}/proof/pr-${{ env.PR_NUMBER }}.html
+          if-no-files-found: error
+
+      - name: Comment — walkthrough ready
+        if: steps.gate.outputs.skipped == 'false' && steps.proof.outputs.exit-code == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          BODY_FILE="$RUNNER_TEMP/comment.md"
+          {
+            echo "$COMMENT_MARKER"
+            echo "### 📖 proof walkthrough ready"
+            echo ""
+            echo "A decision-spine walkthrough for this PR was generated and validated."
+            echo ""
+            echo "**[Download \`pr-${PR_NUMBER}.html\`]($RUN_URL#artifacts)** → open it in a browser (self-contained, no server)."
+            echo ""
+            echo "> ⚠️ _Generated by a model and **not yet author-verified**. Every claim is anchored to a real line, but the reasoning is drafted, not confirmed. Treat it as a draft until the author has reviewed it._"
+          } > "$BODY_FILE"
+          bash .github/upsert-comment.sh "$REPO" "$PR_NUMBER" "$COMMENT_MARKER" "$BODY_FILE"
+
+      - name: Comment — validation failed
+        # Exit 1 = validation failed; proof.sh printed the errors, captured in
+        # proof-log.txt. Post them so the author can fix the data/prompt.
+        if: steps.gate.outputs.skipped == 'false' && steps.proof.outputs.exit-code == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          BODY_FILE="$RUNNER_TEMP/comment.md"
+          {
+            echo "$COMMENT_MARKER"
+            echo "### 📖 proof walkthrough — validation failed"
+            echo ""
+            echo "The generated walkthrough did not pass provenance/evidence validation, so no artifact was produced. Errors:"
+            echo ""
+            echo '```'
+            # The ERROR lines and the run summary from validate.js. Bound the
+            # size so a pathological run can't post a novel.
+            grep -E '  ERROR |error\(s\)|^valid$' "$RUNNER_TEMP/proof-log.txt" | head -50 || tail -50 "$RUNNER_TEMP/proof-log.txt"
+            echo '```'
+            echo ""
+            echo "> This is expected while the generation prompt is being tuned — the walkthrough is a draft until it validates."
+          } > "$BODY_FILE"
+          bash .github/upsert-comment.sh "$REPO" "$PR_NUMBER" "$COMMENT_MARKER" "$BODY_FILE"
