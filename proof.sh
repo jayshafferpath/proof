@@ -42,7 +42,7 @@ while [ $# -gt 0 ]; do
     --out)    OUT="$2"; shift 2 ;;
     --keep-tmp) KEEP_TMP=1; shift ;;
     -h|--help)
-      sed -n '3,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      sed -n '3,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       exit 0 ;;
     -*) echo "❌ unknown flag: $1" >&2; exit 2 ;;
     *)  PR="$1"; shift ;;
