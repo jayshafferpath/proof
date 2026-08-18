@@ -327,11 +327,107 @@ pre.diff-code { margin: 0; font-family: var(--mono); font-size: 12px; line-heigh
     <button class="theme-toggle" id="theme-toggle">◐ Theme</button>
   </header>
   <nav class="tabbar">
-    <button class="tab on" data-tab="decisions">Decisions <span class="cnt">6</span></button>
-    <button class="tab" data-tab="behaviour">Behaviour <span class="cnt">3</span></button>
+    <button class="tab on" data-tab="behaviour">Behaviour <span class="cnt">3</span></button>
+    <button class="tab" data-tab="decisions">Decisions <span class="cnt">6</span></button>
     <button class="tab" data-tab="diff">Diff <span class="cnt">3</span></button>
   </nav>
-  <div class="tabview md on" id="view-decisions">
+  <div class="tabview beh on" id="view-behaviour">
+    <section class="bm-wrap">
+      <div class="bm-head"><span class="bm-head-t">Behaviour matrix</span><span class="bm-legendbar"><span class="bm-legend k-changed">changed <b>1</b></span><span class="bm-legend k-new">new <b>1</b></span><span class="bm-legend k-unchanged">unchanged <b>1</b></span></span></div>
+      <p class="bm-sub">Each runtime scenario this change touches, before (on main) vs after (this PR). Bug fixes surface as <b>CHANGED</b> rows where the two columns diverge.</p>
+      <table class="bm">
+        <thead><tr><th class="bm-th-s">Scenario</th><th class="bm-th">Before · on main</th><th class="bm-th">After · this PR</th><th class="bm-th">Tested by</th></tr></thead>
+        <tbody><tr class="bm-row k-changed" data-decision="d1">
+    <td class="bm-scenario">
+      <span class="bm-kind k-changed">CHANGED</span>
+      <span class="bm-title">Skip unrecognized categories — don't throw</span>
+      <div class="bm-fork"><span class="fork-y">⋔</span><code>order-subscription.ts:279 — the guard that is the fix</code></div>
+      <button class="bm-why" data-decision="d1" aria-expanded="false">why<span class="bm-why-chev">▶</span></button>
+    </td>
+    <td class="bm-cell was"><div class="step">
+      <span class="srail"><span class="sdot">1</span><span class="sline"></span></span>
+      <span class="sbody"><span class="smain">Event arrives · category = "__unknown__"</span><span class="snote">adapters cast the sentinel straight into the domain type</span></span></div><div class="step bad">
+      <span class="srail"><span class="sdot">!</span><span class="sline"></span></span>
+      <span class="sbody"><span class="smain">flows into categoryLabel</span><span class="snote">exhaustive switch, no arm matches</span></span></div><div class="step bad">
+      <span class="srail"><span class="sdot">!</span><span class="sline"></span></span>
+      <span class="sbody"><span class="smain">throws on the unrecognized value</span><span class="snote">handler logs and rethrows</span></span></div><div class="step bad">
+      <span class="srail"><span class="sdot">!</span><span class="sline"></span></span>
+      <span class="sbody"><span class="smain">queue redelivers → poison-retry loop</span><span class="snote">the error-tracking monitor fires</span></span></div></td><td class="bm-cell now"><div class="step">
+      <span class="srail"><span class="sdot">1</span><span class="sline"></span></span>
+      <span class="sbody"><span class="smain">Event arrives · category = "__unknown__"</span><span class="snote">same input reaches the subscription</span></span></div><div class="step">
+      <span class="srail"><span class="sdot">2</span><span class="sline"></span></span>
+      <span class="sbody"><span class="smain">shouldSkipUnrecognizedCategory → true</span><span class="snote">record.category is not in RECOGNIZED_CATEGORIES</span></span></div><div class="step good">
+      <span class="srail"><span class="sdot">✓</span><span class="sline"></span></span>
+      <span class="sbody"><span class="smain">return — no record fetch, no downstream call, no throw</span><span class="snote">message acknowledged; nothing downstream runs</span></span></div></td><td class="bm-cell tests">
+      <ul class="bm-test-list"><li class="bm-test"><span class="bm-test-tick">✓</span>skips and meters a record with an unrecognized category</li><li class="bm-test"><span class="bm-test-tick">✓</span>does not throw or fetch downstream on the sentinel</li></ul>
+      <div class="bm-test-file"><span title="src/subscription/order-subscription.test.ts">order-subscription.test.ts</span></div>
+    </td>
+  </tr>
+  <tr class="bm-reason" data-decision="d1" hidden><td colspan="4"><div class="bm-reason-inner">
+    <div class="bm-reason-head"><span class="schip author">✎ author-stated</span><span class="bm-reason-why">the decision behind this behaviour</span></div>
+    <p class="dd-chose">Detect the out-of-union value and pass the record over.</p>
+    <div class="contrast"><span class="ck">instead of</span><span class="cv"><span class="strike">Let it reach the exhaustive switch and throw, or widen the union to accept it</span></span></div>
+    <div class="lbl">Why it matters</div><p class="why">The upstream service emits categories outside our closed union; its generated client surfaces them as an unknown-enum sentinel that adapters cast in blindly. That value hit an exhaustive switch and threw — and since the handler logs-and-rethrows, it became a poison-message retry loop. The upstream team confirmed these records should be ignored.</p>
+    <div class="qbox">“We confirmed with the upstream team that these records should be ignored / passed over.”<span class="qs">— PR description · Root cause</span></div>
+  </div></td></tr>
+<tr class="bm-row k-new" data-decision="d3">
+    <td class="bm-scenario">
+      <span class="bm-kind k-new">NEW</span>
+      <span class="bm-title">Treat an unrecognized LINKED record as absent</span>
+      
+      <button class="bm-why" data-decision="d3" aria-expanded="false">why<span class="bm-why-chev">▶</span></button>
+    </td>
+    <td class="bm-cell was empty"><span class="bm-empty">did not exist</span></td><td class="bm-cell now"><div class="step">
+      <span class="srail"><span class="sdot">1</span><span class="sline"></span></span>
+      <span class="sbody"><span class="smain">Enriching an event, fetch the linked record</span><span class="snote">adds related-record properties to the current event</span></span></div><div class="step bad">
+      <span class="srail"><span class="sdot">!</span><span class="sline"></span></span>
+      <span class="sbody"><span class="smain">Linked record carries the sentinel category</span><span class="snote">same bad value, on a neighbouring record</span></span></div><div class="step">
+      <span class="srail"><span class="sdot">3</span><span class="sline"></span></span>
+      <span class="sbody"><span class="smain">shouldSkipUnrecognizedCategory(linked) → guarded off</span><span class="snote">linkedRecord stays null instead of being built</span></span></div><div class="step good">
+      <span class="srail"><span class="sdot">✓</span><span class="sline"></span></span>
+      <span class="sbody"><span class="smain">Current event ships without linked-record data</span><span class="snote">the current event is not lost</span></span></div></td><td class="bm-cell tests">
+      <ul class="bm-test-list"><li class="bm-test"><span class="bm-test-tick">✓</span>treats a linked record with an unrecognized category as absent</li><li class="bm-test"><span class="bm-test-tick">✓</span>still ships the current event when the linked record is skipped</li></ul>
+      <div class="bm-test-file"><span title="src/subscription/order-subscription.test.ts">order-subscription.test.ts</span></div>
+    </td>
+  </tr>
+  <tr class="bm-reason" data-decision="d3" hidden><td colspan="4"><div class="bm-reason-inner">
+    <div class="bm-reason-head"><span class="schip author">✎ author-stated</span><span class="bm-reason-why">the decision behind this behaviour</span></div>
+    <p class="dd-chose">Behave as if there is no linked record.</p>
+    <div class="contrast"><span class="ck">instead of</span><span class="cv"><span class="strike">Throw while building linked-record event properties</span></span></div>
+    <div class="lbl">Why it matters</div><p class="why">Enrichment reads the record's linked sibling. If that record carries a sentinel category, the same switch would throw mid-enrichment — turning an unprocessable neighbour into a failure of the current event. Treating it as absent degrades gracefully: the current event still ships.</p>
+    <div class="qbox">“Treat a linked record with an unrecognized category as if there were none, rather than throwing while building its event properties.”<span class="qs">— code comment · order-subscription.ts:643</span></div>
+  </div></td></tr>
+<tr class="bm-row k-unchanged" data-decision="d6">
+    <td class="bm-scenario">
+      <span class="bm-kind k-unchanged">UNCHANGED</span>
+      <span class="bm-title">Count null as a recognized category</span>
+      
+      <button class="bm-why" data-decision="d6" aria-expanded="false">why<span class="bm-why-chev">▶</span></button>
+    </td>
+    <td class="bm-cell now span" colspan="2"><div class="step">
+      <span class="srail"><span class="sdot">1</span><span class="sline"></span></span>
+      <span class="sbody"><span class="smain">Event arrives · category = "standard" or null</span><span class="snote">a valid domain value</span></span></div><div class="step">
+      <span class="srail"><span class="sdot">2</span><span class="sline"></span></span>
+      <span class="sbody"><span class="smain">isRecognizedCategory → true</span><span class="snote">in the recognized set; null is a member</span></span></div><div class="step">
+      <span class="srail"><span class="sdot">3</span><span class="sline"></span></span>
+      <span class="sbody"><span class="smain">guard returns false → falls through</span><span class="snote">no skip, no metric</span></span></div><div class="step good">
+      <span class="srail"><span class="sdot">✓</span><span class="sline"></span></span>
+      <span class="sbody"><span class="smain">Record fetched, enriched, forwarded downstream</span><span class="snote">identical to pre-PR behaviour</span></span></div></td><td class="bm-cell tests">
+      <ul class="bm-test-list"><li class="bm-test"><span class="bm-test-tick">✓</span>processes standard/express/bulk unchanged</li><li class="bm-test"><span class="bm-test-tick">✓</span>treats null as recognized and does not skip it</li></ul>
+      <div class="bm-test-file"><span title="src/subscription/order-subscription.test.ts">order-subscription.test.ts</span></div>
+    </td>
+  </tr>
+  <tr class="bm-reason" data-decision="d6" hidden><td colspan="4"><div class="bm-reason-inner">
+    <div class="bm-reason-head"><span class="schip infer">⚙ AI-inferred</span><span class="bm-reason-why">the decision behind this behaviour</span></div>
+    <p class="dd-chose">Include null in the recognized set, so it processes normally.</p>
+    <div class="contrast"><span class="ck">instead of</span><span class="cv"><span class="strike">Treat null as unrecognized and skip it too</span></span></div>
+    <div class="lbl">Why it matters</div><p class="why">null is a legitimate member of OrderCategory ('no specific category'), distinct from the sentinel string signalling an out-of-union value. Skipping null would drop valid records that simply have no category assigned.</p>
+    <div class="ibox">The code marks null as recognized with an inline comment, but the reasoning — that null is a valid domain value unlike the sentinel — is reconstructed from the type definition. The PR body doesn't discuss null, and the rejected alternative is illustrative.<span class="qs">inferred from order.ts:47 + the recognized set at :54-60</span></div>
+  </div></td></tr></tbody>
+      </table>
+    </section>
+  </div>
+  <div class="tabview md" id="view-decisions">
     <aside class="md-list">
       <div class="md-list-h">6 decisions · 5 author-stated, 1 inferred</div>
       <button class="di" data-idx="0">
@@ -473,102 +569,6 @@ pre.diff-code { margin: 0; font-family: var(--mono); font-size: 12px; line-heigh
       <div class="ev-file"><span class="fp">src/models/order.ts</span><span>54-68</span></div>
       <pre class="code"><div class="cl"><span class="ln">47</span><span class="ct">export type OrderCategory = "standard" | "express" | "bulk" | null;</span></div><div class="cl add"><span class="ln">54</span><span class="ct">const RECOGNIZED_CATEGORIES = new Set&lt;OrderCategory&gt;([</span></div><div class="cl add"><span class="ln">55</span><span class="ct">  "standard", "express", "bulk",</span></div><div class="cl add hl"><span class="ln">59</span><span class="ct">  null /* no specific category */,</span></div><div class="cl add"><span class="ln">60</span><span class="ct">]);</span></div><div class="cl add"><span class="ln">66</span><span class="ct">export function isRecognizedCategory(category: OrderCategory): boolean {</span></div><div class="cl add"><span class="ln">67</span><span class="ct">  return RECOGNIZED_CATEGORIES.has(category);</span></div><div class="cl add"><span class="ln">68</span><span class="ct">}</span></div></pre></div></div></div></div>
     </section></div></div></section>
-  </div>
-  <div class="tabview beh" id="view-behaviour">
-    <section class="bm-wrap">
-      <div class="bm-head"><span class="bm-head-t">Behaviour matrix</span><span class="bm-legendbar"><span class="bm-legend k-changed">changed <b>1</b></span><span class="bm-legend k-new">new <b>1</b></span><span class="bm-legend k-unchanged">unchanged <b>1</b></span></span></div>
-      <p class="bm-sub">Each runtime scenario this change touches, before (on main) vs after (this PR). Bug fixes surface as <b>CHANGED</b> rows where the two columns diverge.</p>
-      <table class="bm">
-        <thead><tr><th class="bm-th-s">Scenario</th><th class="bm-th">Before · on main</th><th class="bm-th">After · this PR</th><th class="bm-th">Tested by</th></tr></thead>
-        <tbody><tr class="bm-row k-changed" data-decision="d1">
-    <td class="bm-scenario">
-      <span class="bm-kind k-changed">CHANGED</span>
-      <span class="bm-title">Skip unrecognized categories — don't throw</span>
-      <div class="bm-fork"><span class="fork-y">⋔</span><code>order-subscription.ts:279 — the guard that is the fix</code></div>
-      <button class="bm-why" data-decision="d1" aria-expanded="false">why<span class="bm-why-chev">▶</span></button>
-    </td>
-    <td class="bm-cell was"><div class="step">
-      <span class="srail"><span class="sdot">1</span><span class="sline"></span></span>
-      <span class="sbody"><span class="smain">Event arrives · category = "__unknown__"</span><span class="snote">adapters cast the sentinel straight into the domain type</span></span></div><div class="step bad">
-      <span class="srail"><span class="sdot">!</span><span class="sline"></span></span>
-      <span class="sbody"><span class="smain">flows into categoryLabel</span><span class="snote">exhaustive switch, no arm matches</span></span></div><div class="step bad">
-      <span class="srail"><span class="sdot">!</span><span class="sline"></span></span>
-      <span class="sbody"><span class="smain">throws on the unrecognized value</span><span class="snote">handler logs and rethrows</span></span></div><div class="step bad">
-      <span class="srail"><span class="sdot">!</span><span class="sline"></span></span>
-      <span class="sbody"><span class="smain">queue redelivers → poison-retry loop</span><span class="snote">the error-tracking monitor fires</span></span></div></td><td class="bm-cell now"><div class="step">
-      <span class="srail"><span class="sdot">1</span><span class="sline"></span></span>
-      <span class="sbody"><span class="smain">Event arrives · category = "__unknown__"</span><span class="snote">same input reaches the subscription</span></span></div><div class="step">
-      <span class="srail"><span class="sdot">2</span><span class="sline"></span></span>
-      <span class="sbody"><span class="smain">shouldSkipUnrecognizedCategory → true</span><span class="snote">record.category is not in RECOGNIZED_CATEGORIES</span></span></div><div class="step good">
-      <span class="srail"><span class="sdot">✓</span><span class="sline"></span></span>
-      <span class="sbody"><span class="smain">return — no record fetch, no downstream call, no throw</span><span class="snote">message acknowledged; nothing downstream runs</span></span></div></td><td class="bm-cell tests">
-      <ul class="bm-test-list"><li class="bm-test"><span class="bm-test-tick">✓</span>skips and meters a record with an unrecognized category</li><li class="bm-test"><span class="bm-test-tick">✓</span>does not throw or fetch downstream on the sentinel</li></ul>
-      <div class="bm-test-file"><span title="src/subscription/order-subscription.test.ts">order-subscription.test.ts</span></div>
-    </td>
-  </tr>
-  <tr class="bm-reason" data-decision="d1" hidden><td colspan="4"><div class="bm-reason-inner">
-    <div class="bm-reason-head"><span class="schip author">✎ author-stated</span><span class="bm-reason-why">the decision behind this behaviour</span></div>
-    <p class="dd-chose">Detect the out-of-union value and pass the record over.</p>
-    <div class="contrast"><span class="ck">instead of</span><span class="cv"><span class="strike">Let it reach the exhaustive switch and throw, or widen the union to accept it</span></span></div>
-    <div class="lbl">Why it matters</div><p class="why">The upstream service emits categories outside our closed union; its generated client surfaces them as an unknown-enum sentinel that adapters cast in blindly. That value hit an exhaustive switch and threw — and since the handler logs-and-rethrows, it became a poison-message retry loop. The upstream team confirmed these records should be ignored.</p>
-    <div class="qbox">“We confirmed with the upstream team that these records should be ignored / passed over.”<span class="qs">— PR description · Root cause</span></div>
-  </div></td></tr>
-<tr class="bm-row k-new" data-decision="d3">
-    <td class="bm-scenario">
-      <span class="bm-kind k-new">NEW</span>
-      <span class="bm-title">Treat an unrecognized LINKED record as absent</span>
-      
-      <button class="bm-why" data-decision="d3" aria-expanded="false">why<span class="bm-why-chev">▶</span></button>
-    </td>
-    <td class="bm-cell was empty"><span class="bm-empty">did not exist</span></td><td class="bm-cell now"><div class="step">
-      <span class="srail"><span class="sdot">1</span><span class="sline"></span></span>
-      <span class="sbody"><span class="smain">Enriching an event, fetch the linked record</span><span class="snote">adds related-record properties to the current event</span></span></div><div class="step bad">
-      <span class="srail"><span class="sdot">!</span><span class="sline"></span></span>
-      <span class="sbody"><span class="smain">Linked record carries the sentinel category</span><span class="snote">same bad value, on a neighbouring record</span></span></div><div class="step">
-      <span class="srail"><span class="sdot">3</span><span class="sline"></span></span>
-      <span class="sbody"><span class="smain">shouldSkipUnrecognizedCategory(linked) → guarded off</span><span class="snote">linkedRecord stays null instead of being built</span></span></div><div class="step good">
-      <span class="srail"><span class="sdot">✓</span><span class="sline"></span></span>
-      <span class="sbody"><span class="smain">Current event ships without linked-record data</span><span class="snote">the current event is not lost</span></span></div></td><td class="bm-cell tests">
-      <ul class="bm-test-list"><li class="bm-test"><span class="bm-test-tick">✓</span>treats a linked record with an unrecognized category as absent</li><li class="bm-test"><span class="bm-test-tick">✓</span>still ships the current event when the linked record is skipped</li></ul>
-      <div class="bm-test-file"><span title="src/subscription/order-subscription.test.ts">order-subscription.test.ts</span></div>
-    </td>
-  </tr>
-  <tr class="bm-reason" data-decision="d3" hidden><td colspan="4"><div class="bm-reason-inner">
-    <div class="bm-reason-head"><span class="schip author">✎ author-stated</span><span class="bm-reason-why">the decision behind this behaviour</span></div>
-    <p class="dd-chose">Behave as if there is no linked record.</p>
-    <div class="contrast"><span class="ck">instead of</span><span class="cv"><span class="strike">Throw while building linked-record event properties</span></span></div>
-    <div class="lbl">Why it matters</div><p class="why">Enrichment reads the record's linked sibling. If that record carries a sentinel category, the same switch would throw mid-enrichment — turning an unprocessable neighbour into a failure of the current event. Treating it as absent degrades gracefully: the current event still ships.</p>
-    <div class="qbox">“Treat a linked record with an unrecognized category as if there were none, rather than throwing while building its event properties.”<span class="qs">— code comment · order-subscription.ts:643</span></div>
-  </div></td></tr>
-<tr class="bm-row k-unchanged" data-decision="d6">
-    <td class="bm-scenario">
-      <span class="bm-kind k-unchanged">UNCHANGED</span>
-      <span class="bm-title">Count null as a recognized category</span>
-      
-      <button class="bm-why" data-decision="d6" aria-expanded="false">why<span class="bm-why-chev">▶</span></button>
-    </td>
-    <td class="bm-cell now span" colspan="2"><div class="step">
-      <span class="srail"><span class="sdot">1</span><span class="sline"></span></span>
-      <span class="sbody"><span class="smain">Event arrives · category = "standard" or null</span><span class="snote">a valid domain value</span></span></div><div class="step">
-      <span class="srail"><span class="sdot">2</span><span class="sline"></span></span>
-      <span class="sbody"><span class="smain">isRecognizedCategory → true</span><span class="snote">in the recognized set; null is a member</span></span></div><div class="step">
-      <span class="srail"><span class="sdot">3</span><span class="sline"></span></span>
-      <span class="sbody"><span class="smain">guard returns false → falls through</span><span class="snote">no skip, no metric</span></span></div><div class="step good">
-      <span class="srail"><span class="sdot">✓</span><span class="sline"></span></span>
-      <span class="sbody"><span class="smain">Record fetched, enriched, forwarded downstream</span><span class="snote">identical to pre-PR behaviour</span></span></div></td><td class="bm-cell tests">
-      <ul class="bm-test-list"><li class="bm-test"><span class="bm-test-tick">✓</span>processes standard/express/bulk unchanged</li><li class="bm-test"><span class="bm-test-tick">✓</span>treats null as recognized and does not skip it</li></ul>
-      <div class="bm-test-file"><span title="src/subscription/order-subscription.test.ts">order-subscription.test.ts</span></div>
-    </td>
-  </tr>
-  <tr class="bm-reason" data-decision="d6" hidden><td colspan="4"><div class="bm-reason-inner">
-    <div class="bm-reason-head"><span class="schip infer">⚙ AI-inferred</span><span class="bm-reason-why">the decision behind this behaviour</span></div>
-    <p class="dd-chose">Include null in the recognized set, so it processes normally.</p>
-    <div class="contrast"><span class="ck">instead of</span><span class="cv"><span class="strike">Treat null as unrecognized and skip it too</span></span></div>
-    <div class="lbl">Why it matters</div><p class="why">null is a legitimate member of OrderCategory ('no specific category'), distinct from the sentinel string signalling an out-of-union value. Skipping null would drop valid records that simply have no category assigned.</p>
-    <div class="ibox">The code marks null as recognized with an inline comment, but the reasoning — that null is a valid domain value unlike the sentinel — is reconstructed from the type definition. The PR body doesn't discuss null, and the rejected alternative is illustrative.<span class="qs">inferred from order.ts:47 + the recognized set at :54-60</span></div>
-  </div></td></tr></tbody>
-      </table>
-    </section>
   </div>
   <div class="tabview diff" id="view-diff">
     <section class="diff-files"><div class="diff-file" data-file="src/subscription/order-subscription.ts">

@@ -327,11 +327,99 @@ pre.diff-code { margin: 0; font-family: var(--mono); font-size: 12px; line-heigh
     <button class="theme-toggle" id="theme-toggle">◐ Theme</button>
   </header>
   <nav class="tabbar">
-    <button class="tab on" data-tab="decisions">Decisions <span class="cnt">6</span></button>
-    <button class="tab" data-tab="behaviour">Behaviour <span class="cnt">3</span></button>
+    <button class="tab on" data-tab="behaviour">Behaviour <span class="cnt">3</span></button>
+    <button class="tab" data-tab="decisions">Decisions <span class="cnt">6</span></button>
     <button class="tab" data-tab="diff">Diff <span class="cnt">20</span></button>
   </nav>
-  <div class="tabview md on" id="view-decisions">
+  <div class="tabview beh on" id="view-behaviour">
+    <section class="bm-wrap">
+      <div class="bm-head"><span class="bm-head-t">Behaviour matrix</span><span class="bm-legendbar"><span class="bm-legend k-new">new <b>3</b></span></span></div>
+      <p class="bm-sub">Each runtime scenario this change touches, before (on main) vs after (this PR). Bug fixes surface as <b>CHANGED</b> rows where the two columns diverge.</p>
+      <table class="bm">
+        <thead><tr><th class="bm-th-s">Scenario</th><th class="bm-th">Before · on main</th><th class="bm-th">After · this PR</th><th class="bm-th">Tested by</th></tr></thead>
+        <tbody><tr class="bm-row k-new" data-decision="d4">
+    <td class="bm-scenario">
+      <span class="bm-kind k-new">NEW</span>
+      <span class="bm-title">Decompose the handler into gate → claim → send</span>
+      
+      <button class="bm-why" data-decision="d4" aria-expanded="false">why<span class="bm-why-chev">▶</span></button>
+    </td>
+    <td class="bm-cell was empty"><span class="bm-empty">did not exist</span></td><td class="bm-cell now"><div class="step">
+      <span class="srail"><span class="sdot">1</span><span class="sline"></span></span>
+      <span class="sbody"><span class="smain">practiceReportGenerated(msg) begins</span><span class="snote">one message = one report to maybe send</span></span></div><div class="step">
+      <span class="srail"><span class="sdot">2</span><span class="sline"></span></span>
+      <span class="sbody"><span class="smain">isSendEnabled → false short-circuits</span><span class="snote">flag off: return before any claim</span></span></div><div class="step">
+      <span class="srail"><span class="sdot">3</span><span class="sline"></span></span>
+      <span class="sbody"><span class="smain">claimSlot → false short-circuits</span><span class="snote">already claimed: return before any send</span></span></div><div class="step good">
+      <span class="srail"><span class="sdot">✓</span><span class="sline"></span></span>
+      <span class="sbody"><span class="smain">sendClaimed(msg)</span><span class="snote">only reached when enabled and freshly claimed</span></span></div></td><td class="bm-cell tests">
+      <ul class="bm-test-list"><li class="bm-test"><span class="bm-test-tick">✓</span>makes no HubSpot request when the flag is off</li><li class="bm-test"><span class="bm-test-tick">✓</span>never claims a slot when the flag is off</li></ul>
+      <div class="bm-test-file"><a class="bm-test-file-link" href="https://github.com/pathccm/marketing/blob/d725f3d42078968afafb9e4f70b02ad8db3a4cae/packages/marketing/src/subscription/practice-report.default.test.ts" target="_blank" rel="noopener" title="packages/marketing/src/subscription/practice-report.default.test.ts">practice-report.default.test.ts<span class="gh-glyph">↗</span></a></div>
+    </td>
+  </tr>
+  <tr class="bm-reason" data-decision="d4" hidden><td colspan="4"><div class="bm-reason-inner">
+    <div class="bm-reason-head"><span class="schip author">✎ author-stated</span><span class="bm-reason-why">the decision behind this behaviour</span></div>
+    <p class="dd-chose">Split <code>practiceReportGenerated</code> into three guard-clause steps: is-send-enabled, claim-slot, send-claimed.</p>
+    <div class="contrast"><span class="ck">instead of</span><span class="cv"><span class="strike">One method that flag-checks, claims, composes, POSTs, and releases inline</span></span></div>
+    <div class="lbl">Why it matters</div><p class="why">Each step is a guard that returns early, so the happy path reads top to bottom and each precondition is checkable in isolation. It mirrors the established PartnerReferralSubscription flow (flag → claim → send → release-on-failure), so a reviewer who knows that precedent already knows this shape.</p>
+    <div class="qbox">“decompose practiceReportGenerated into gate/claim/send steps”<span class="qs">— commit 0edbc4e9</span></div>
+  </div></td></tr>
+<tr class="bm-row k-new" data-decision="d5">
+    <td class="bm-scenario">
+      <span class="bm-kind k-new">NEW</span>
+      <span class="bm-title">Claim an idempotency slot so redelivery never double-sends</span>
+      
+      <button class="bm-why" data-decision="d5" aria-expanded="false">why<span class="bm-why-chev">▶</span></button>
+    </td>
+    <td class="bm-cell was empty"><span class="bm-empty">did not exist</span></td><td class="bm-cell now"><div class="step">
+      <span class="srail"><span class="sdot">1</span><span class="sline"></span></span>
+      <span class="sbody"><span class="smain">claimSlot calls emailSends.claim(practice, emailType, batchPeriod)</span><span class="snote">attempt to win the send for this batch</span></span></div><div class="step">
+      <span class="srail"><span class="sdot">2</span><span class="sline"></span></span>
+      <span class="sbody"><span class="smain">claim returns false → already sent</span><span class="snote">a prior delivery holds the slot</span></span></div><div class="step good">
+      <span class="srail"><span class="sdot">✓</span><span class="sline"></span></span>
+      <span class="sbody"><span class="smain">log 'already sent, skipping' and return</span><span class="snote">no HubSpot request on redelivery</span></span></div></td><td class="bm-cell tests">
+      <ul class="bm-test-list"><li class="bm-test"><span class="bm-test-tick">✓</span>claims the slot for (practice, report_type, batch_period)</li><li class="bm-test"><span class="bm-test-tick">✓</span>refuses the claim and makes no HubSpot request on redelivery</li></ul>
+      <div class="bm-test-file"><a class="bm-test-file-link" href="https://github.com/pathccm/marketing/blob/d725f3d42078968afafb9e4f70b02ad8db3a4cae/packages/marketing/src/subscription/practice-report.default.test.ts" target="_blank" rel="noopener" title="packages/marketing/src/subscription/practice-report.default.test.ts">practice-report.default.test.ts<span class="gh-glyph">↗</span></a></div>
+    </td>
+  </tr>
+  <tr class="bm-reason" data-decision="d5" hidden><td colspan="4"><div class="bm-reason-inner">
+    <div class="bm-reason-head"><span class="schip author">✎ author-stated</span><span class="bm-reason-why">the decision behind this behaviour</span></div>
+    <p class="dd-chose">Claim <code>(practice_id, report_type, batch_period)</code> before sending; a lost claim refuses the send.</p>
+    <div class="contrast"><span class="ck">instead of</span><span class="cv"><span class="strike">Send on every delivery, or check-then-insert (racy under concurrent partitions)</span></span></div>
+    <div class="lbl">Why it matters</div><p class="why">Kafka is at-least-once and the consumer runs four partitions concurrently, so the same report can arrive more than once. The claim is an atomic INSERT ... ON CONFLICT DO NOTHING on a unique key; a redelivery loses the claim and makes no HubSpot request. That turns duplicate delivery into a no-op instead of a duplicate email.</p>
+    <div class="qbox">“claim uses INSERT ... ON CONFLICT (practice_id, report_type, batch_period) DO NOTHING; redelivery under at-least-once semantics refuses the claim and makes no HubSpot request.”<span class="qs">— PR description · Risk Mitigations</span></div>
+  </div></td></tr>
+<tr class="bm-row k-new" data-decision="d6">
+    <td class="bm-scenario">
+      <span class="bm-kind k-new">NEW</span>
+      <span class="bm-title">Release the slot on send failure so a later flip re-drives cleanly</span>
+      
+      <button class="bm-why" data-decision="d6" aria-expanded="false">why<span class="bm-why-chev">▶</span></button>
+    </td>
+    <td class="bm-cell was empty"><span class="bm-empty">did not exist</span></td><td class="bm-cell now"><div class="step">
+      <span class="srail"><span class="sdot">1</span><span class="sline"></span></span>
+      <span class="sbody"><span class="smain">sendClaimed sets sent=false, POSTs the payload</span><span class="snote">the slot is already held at this point</span></span></div><div class="step bad">
+      <span class="srail"><span class="sdot">!</span><span class="sline"></span></span>
+      <span class="sbody"><span class="smain">send fails → throw</span><span class="snote">sent stays false</span></span></div><div class="step">
+      <span class="srail"><span class="sdot">3</span><span class="sline"></span></span>
+      <span class="sbody"><span class="smain">finally: !sent → release(practice, emailType, batchPeriod)</span><span class="snote">the slot is freed for a retry or later flip</span></span></div><div class="step bad">
+      <span class="srail"><span class="sdot">!</span><span class="sline"></span></span>
+      <span class="sbody"><span class="smain">error propagates → consumer retry engages</span><span class="snote">at-least-once semantics preserved</span></span></div></td><td class="bm-cell tests">
+      <ul class="bm-test-list"><li class="bm-test"><span class="bm-test-tick">✓</span>releases the claim so the next batch can retry</li><li class="bm-test"><span class="bm-test-tick">✓</span>propagates the failure so consumer retry semantics engage</li></ul>
+      <div class="bm-test-file"><a class="bm-test-file-link" href="https://github.com/pathccm/marketing/blob/d725f3d42078968afafb9e4f70b02ad8db3a4cae/packages/marketing/src/subscription/practice-report.default.test.ts" target="_blank" rel="noopener" title="packages/marketing/src/subscription/practice-report.default.test.ts">practice-report.default.test.ts<span class="gh-glyph">↗</span></a></div>
+    </td>
+  </tr>
+  <tr class="bm-reason" data-decision="d6" hidden><td colspan="4"><div class="bm-reason-inner">
+    <div class="bm-reason-head"><span class="schip author">✎ author-stated</span><span class="bm-reason-why">the decision behind this behaviour</span></div>
+    <p class="dd-chose">Track a <code>sent</code> flag; in <code>finally</code>, release the claim if the send did not succeed, then rethrow.</p>
+    <div class="contrast"><span class="ck">instead of</span><span class="cv"><span class="strike">Leave the slot claimed on failure (permanent), or release unconditionally</span></span></div>
+    <div class="lbl">Why it matters</div><p class="why">A claimed-but-unsent slot would permanently block that report — a HubSpot outage would silently swallow it forever. Releasing only on failure means a retry, or a later flag flip, re-drives cleanly; releasing unconditionally would defeat the idempotency guard on the success path. Rethrowing preserves the consumer's at-least-once retry semantics.</p>
+    <div class="qbox">“a later flip re-drives cleanly since flag-off never claims a slot.”<span class="qs">— PR description · Risk Mitigations</span></div>
+  </div></td></tr></tbody>
+      </table>
+    </section>
+  </div>
+  <div class="tabview md" id="view-decisions">
     <aside class="md-list">
       <div class="md-list-h">6 decisions · 6 author-stated, 0 inferred</div>
       <button class="di" data-idx="0">
@@ -463,94 +551,6 @@ pre.diff-code { margin: 0; font-family: var(--mono); font-size: 12px; line-heigh
       <div class="ev-file"><a class="ev-file-link" href="https://github.com/pathccm/marketing/blob/d725f3d42078968afafb9e4f70b02ad8db3a4cae/packages/marketing/src/subscription/practice-report.default.ts#L54-L70" target="_blank" rel="noopener"><span class="fp">packages/marketing/src/subscription/practice-report.default.ts</span><span>54-70</span><span class="gh-glyph" title="View on GitHub">↗</span></a></div>
       <pre class="code"><div class="cl add"><span class="ln">54</span><span class="ct">  private async sendClaimed(msg: PracticeReportGeneratedMessage): Promise&lt;void&gt; {</span></div><div class="cl add"><span class="ln">55</span><span class="ct">    let sent = false;</span></div><div class="cl add"><span class="ln">56</span><span class="ct">    try {</span></div><div class="cl add"><span class="ln">57</span><span class="ct">      const result = await sendHubSpotWebhook(buildPayload(msg));</span></div><div class="cl add"><span class="ln">58</span><span class="ct">      if (result.status === "failed") {</span></div><div class="cl add"><span class="ln">59</span><span class="ct">        throw new Error(</span></div><div class="cl add"><span class="ln">62</span><span class="ct">      sent = true;</span></div><div class="cl add hl"><span class="ln">64</span><span class="ct">    } finally {</span></div><div class="cl add hl"><span class="ln">65</span><span class="ct">      if (!sent) {</span></div><div class="cl add hl"><span class="ln">66</span><span class="ct">        await this.deps.emailSends.release(msg.practiceSfAccountId, msg.emailType, msg.batchPeriod);</span></div><div class="cl add hl"><span class="ln">67</span><span class="ct">      }</span></div><div class="cl add hl"><span class="ln">68</span><span class="ct">    }</span></div><div class="cl add hl"><span class="ln">69</span><span class="ct">  }</span></div></pre></div></div></div></div>
     </section></div></div></section>
-  </div>
-  <div class="tabview beh" id="view-behaviour">
-    <section class="bm-wrap">
-      <div class="bm-head"><span class="bm-head-t">Behaviour matrix</span><span class="bm-legendbar"><span class="bm-legend k-new">new <b>3</b></span></span></div>
-      <p class="bm-sub">Each runtime scenario this change touches, before (on main) vs after (this PR). Bug fixes surface as <b>CHANGED</b> rows where the two columns diverge.</p>
-      <table class="bm">
-        <thead><tr><th class="bm-th-s">Scenario</th><th class="bm-th">Before · on main</th><th class="bm-th">After · this PR</th><th class="bm-th">Tested by</th></tr></thead>
-        <tbody><tr class="bm-row k-new" data-decision="d4">
-    <td class="bm-scenario">
-      <span class="bm-kind k-new">NEW</span>
-      <span class="bm-title">Decompose the handler into gate → claim → send</span>
-      
-      <button class="bm-why" data-decision="d4" aria-expanded="false">why<span class="bm-why-chev">▶</span></button>
-    </td>
-    <td class="bm-cell was empty"><span class="bm-empty">did not exist</span></td><td class="bm-cell now"><div class="step">
-      <span class="srail"><span class="sdot">1</span><span class="sline"></span></span>
-      <span class="sbody"><span class="smain">practiceReportGenerated(msg) begins</span><span class="snote">one message = one report to maybe send</span></span></div><div class="step">
-      <span class="srail"><span class="sdot">2</span><span class="sline"></span></span>
-      <span class="sbody"><span class="smain">isSendEnabled → false short-circuits</span><span class="snote">flag off: return before any claim</span></span></div><div class="step">
-      <span class="srail"><span class="sdot">3</span><span class="sline"></span></span>
-      <span class="sbody"><span class="smain">claimSlot → false short-circuits</span><span class="snote">already claimed: return before any send</span></span></div><div class="step good">
-      <span class="srail"><span class="sdot">✓</span><span class="sline"></span></span>
-      <span class="sbody"><span class="smain">sendClaimed(msg)</span><span class="snote">only reached when enabled and freshly claimed</span></span></div></td><td class="bm-cell tests">
-      <ul class="bm-test-list"><li class="bm-test"><span class="bm-test-tick">✓</span>makes no HubSpot request when the flag is off</li><li class="bm-test"><span class="bm-test-tick">✓</span>never claims a slot when the flag is off</li></ul>
-      <div class="bm-test-file"><a class="bm-test-file-link" href="https://github.com/pathccm/marketing/blob/d725f3d42078968afafb9e4f70b02ad8db3a4cae/packages/marketing/src/subscription/practice-report.default.test.ts" target="_blank" rel="noopener" title="packages/marketing/src/subscription/practice-report.default.test.ts">practice-report.default.test.ts<span class="gh-glyph">↗</span></a></div>
-    </td>
-  </tr>
-  <tr class="bm-reason" data-decision="d4" hidden><td colspan="4"><div class="bm-reason-inner">
-    <div class="bm-reason-head"><span class="schip author">✎ author-stated</span><span class="bm-reason-why">the decision behind this behaviour</span></div>
-    <p class="dd-chose">Split <code>practiceReportGenerated</code> into three guard-clause steps: is-send-enabled, claim-slot, send-claimed.</p>
-    <div class="contrast"><span class="ck">instead of</span><span class="cv"><span class="strike">One method that flag-checks, claims, composes, POSTs, and releases inline</span></span></div>
-    <div class="lbl">Why it matters</div><p class="why">Each step is a guard that returns early, so the happy path reads top to bottom and each precondition is checkable in isolation. It mirrors the established PartnerReferralSubscription flow (flag → claim → send → release-on-failure), so a reviewer who knows that precedent already knows this shape.</p>
-    <div class="qbox">“decompose practiceReportGenerated into gate/claim/send steps”<span class="qs">— commit 0edbc4e9</span></div>
-  </div></td></tr>
-<tr class="bm-row k-new" data-decision="d5">
-    <td class="bm-scenario">
-      <span class="bm-kind k-new">NEW</span>
-      <span class="bm-title">Claim an idempotency slot so redelivery never double-sends</span>
-      
-      <button class="bm-why" data-decision="d5" aria-expanded="false">why<span class="bm-why-chev">▶</span></button>
-    </td>
-    <td class="bm-cell was empty"><span class="bm-empty">did not exist</span></td><td class="bm-cell now"><div class="step">
-      <span class="srail"><span class="sdot">1</span><span class="sline"></span></span>
-      <span class="sbody"><span class="smain">claimSlot calls emailSends.claim(practice, emailType, batchPeriod)</span><span class="snote">attempt to win the send for this batch</span></span></div><div class="step">
-      <span class="srail"><span class="sdot">2</span><span class="sline"></span></span>
-      <span class="sbody"><span class="smain">claim returns false → already sent</span><span class="snote">a prior delivery holds the slot</span></span></div><div class="step good">
-      <span class="srail"><span class="sdot">✓</span><span class="sline"></span></span>
-      <span class="sbody"><span class="smain">log 'already sent, skipping' and return</span><span class="snote">no HubSpot request on redelivery</span></span></div></td><td class="bm-cell tests">
-      <ul class="bm-test-list"><li class="bm-test"><span class="bm-test-tick">✓</span>claims the slot for (practice, report_type, batch_period)</li><li class="bm-test"><span class="bm-test-tick">✓</span>refuses the claim and makes no HubSpot request on redelivery</li></ul>
-      <div class="bm-test-file"><a class="bm-test-file-link" href="https://github.com/pathccm/marketing/blob/d725f3d42078968afafb9e4f70b02ad8db3a4cae/packages/marketing/src/subscription/practice-report.default.test.ts" target="_blank" rel="noopener" title="packages/marketing/src/subscription/practice-report.default.test.ts">practice-report.default.test.ts<span class="gh-glyph">↗</span></a></div>
-    </td>
-  </tr>
-  <tr class="bm-reason" data-decision="d5" hidden><td colspan="4"><div class="bm-reason-inner">
-    <div class="bm-reason-head"><span class="schip author">✎ author-stated</span><span class="bm-reason-why">the decision behind this behaviour</span></div>
-    <p class="dd-chose">Claim <code>(practice_id, report_type, batch_period)</code> before sending; a lost claim refuses the send.</p>
-    <div class="contrast"><span class="ck">instead of</span><span class="cv"><span class="strike">Send on every delivery, or check-then-insert (racy under concurrent partitions)</span></span></div>
-    <div class="lbl">Why it matters</div><p class="why">Kafka is at-least-once and the consumer runs four partitions concurrently, so the same report can arrive more than once. The claim is an atomic INSERT ... ON CONFLICT DO NOTHING on a unique key; a redelivery loses the claim and makes no HubSpot request. That turns duplicate delivery into a no-op instead of a duplicate email.</p>
-    <div class="qbox">“claim uses INSERT ... ON CONFLICT (practice_id, report_type, batch_period) DO NOTHING; redelivery under at-least-once semantics refuses the claim and makes no HubSpot request.”<span class="qs">— PR description · Risk Mitigations</span></div>
-  </div></td></tr>
-<tr class="bm-row k-new" data-decision="d6">
-    <td class="bm-scenario">
-      <span class="bm-kind k-new">NEW</span>
-      <span class="bm-title">Release the slot on send failure so a later flip re-drives cleanly</span>
-      
-      <button class="bm-why" data-decision="d6" aria-expanded="false">why<span class="bm-why-chev">▶</span></button>
-    </td>
-    <td class="bm-cell was empty"><span class="bm-empty">did not exist</span></td><td class="bm-cell now"><div class="step">
-      <span class="srail"><span class="sdot">1</span><span class="sline"></span></span>
-      <span class="sbody"><span class="smain">sendClaimed sets sent=false, POSTs the payload</span><span class="snote">the slot is already held at this point</span></span></div><div class="step bad">
-      <span class="srail"><span class="sdot">!</span><span class="sline"></span></span>
-      <span class="sbody"><span class="smain">send fails → throw</span><span class="snote">sent stays false</span></span></div><div class="step">
-      <span class="srail"><span class="sdot">3</span><span class="sline"></span></span>
-      <span class="sbody"><span class="smain">finally: !sent → release(practice, emailType, batchPeriod)</span><span class="snote">the slot is freed for a retry or later flip</span></span></div><div class="step bad">
-      <span class="srail"><span class="sdot">!</span><span class="sline"></span></span>
-      <span class="sbody"><span class="smain">error propagates → consumer retry engages</span><span class="snote">at-least-once semantics preserved</span></span></div></td><td class="bm-cell tests">
-      <ul class="bm-test-list"><li class="bm-test"><span class="bm-test-tick">✓</span>releases the claim so the next batch can retry</li><li class="bm-test"><span class="bm-test-tick">✓</span>propagates the failure so consumer retry semantics engage</li></ul>
-      <div class="bm-test-file"><a class="bm-test-file-link" href="https://github.com/pathccm/marketing/blob/d725f3d42078968afafb9e4f70b02ad8db3a4cae/packages/marketing/src/subscription/practice-report.default.test.ts" target="_blank" rel="noopener" title="packages/marketing/src/subscription/practice-report.default.test.ts">practice-report.default.test.ts<span class="gh-glyph">↗</span></a></div>
-    </td>
-  </tr>
-  <tr class="bm-reason" data-decision="d6" hidden><td colspan="4"><div class="bm-reason-inner">
-    <div class="bm-reason-head"><span class="schip author">✎ author-stated</span><span class="bm-reason-why">the decision behind this behaviour</span></div>
-    <p class="dd-chose">Track a <code>sent</code> flag; in <code>finally</code>, release the claim if the send did not succeed, then rethrow.</p>
-    <div class="contrast"><span class="ck">instead of</span><span class="cv"><span class="strike">Leave the slot claimed on failure (permanent), or release unconditionally</span></span></div>
-    <div class="lbl">Why it matters</div><p class="why">A claimed-but-unsent slot would permanently block that report — a HubSpot outage would silently swallow it forever. Releasing only on failure means a retry, or a later flag flip, re-drives cleanly; releasing unconditionally would defeat the idempotency guard on the success path. Rethrowing preserves the consumer's at-least-once retry semantics.</p>
-    <div class="qbox">“a later flip re-drives cleanly since flag-off never claims a slot.”<span class="qs">— PR description · Risk Mitigations</span></div>
-  </div></td></tr></tbody>
-      </table>
-    </section>
   </div>
   <div class="tabview diff" id="view-diff">
     <section class="diff-files"><div class="diff-file collapsed" data-file=".claude/plans/pr-review-NEV-1645.md">

@@ -216,14 +216,14 @@ function mdListItem(d, i) {
   </button>`;
 }
 
-function renderDecisionsTab(decisions, coverage) {
+function renderDecisionsTab(decisions, coverage, active) {
   const authored = decisions.filter((d) => d.source === "author").length;
   const list = decisions.map(mdListItem).join("\n");
   const panes = decisions
     .map((d, i) => `<div class="dpane${i === 0 ? " on" : ""}" data-idx="${i}">${renderDecision(d, i)}</div>`)
     .join("\n");
   const cov = coverage ? `<div class="md-cov">${renderCoverage(coverage, decisions)}</div>` : "";
-  return `<div class="tabview md on" id="view-decisions">
+  return `<div class="tabview md${active ? " on" : ""}" id="view-decisions">
     <aside class="md-list">
       <div class="md-list-h">${decisions.length} decisions · ${authored} author-stated, ${decisions.length - authored} inferred</div>
       ${list}
@@ -397,7 +397,7 @@ function renderBehaviourRow(row) {
   <tr class="bm-reason" data-decision="${esc(decision.id)}" hidden><td colspan="4">${renderReasoningInline(decision)}</td></tr>`;
 }
 
-function renderBehaviourTab(decisions) {
+function renderBehaviourTab(decisions, active) {
   const rows = behaviourScenarios(decisions);
   if (!rows.length) return "";
   const counts = rows.reduce((a, r) => ((a[r.kind] = (a[r.kind] || 0) + 1), a), {});
@@ -406,7 +406,7 @@ function renderBehaviourTab(decisions) {
     .filter((k) => counts[k])
     .map((k) => `<span class="bm-legend k-${k}">${k} <b>${counts[k]}</b></span>`)
     .join("");
-  return `<div class="tabview beh" id="view-behaviour">
+  return `<div class="tabview beh${active ? " on" : ""}" id="view-behaviour">
     <section class="bm-wrap">
       <div class="bm-head"><span class="bm-head-t">Behaviour matrix</span><span class="bm-legendbar">${legend}</span></div>
       <p class="bm-sub">Each runtime scenario this change touches, before (on main) vs after (this PR). Bug fixes surface as <b>CHANGED</b> rows where the two columns diverge.</p>
@@ -425,6 +425,10 @@ function render(data, css) {
   const changedFiles = hasDiff ? diff.length : 0;
   const behaviourRows = behaviourScenarios(decisions);
   const hasBehaviour = behaviourRows.length > 0;
+  // Behaviour-first is the settled design (docs/design.md): the reviewer's first
+  // screen should be something checkable against code. Fall back to Decisions
+  // when a PR has no behaviour scenarios (pure framing/scope changes).
+  const defaultTab = hasBehaviour ? "behaviour" : "decisions";
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -445,12 +449,12 @@ ${css}
     <button class="theme-toggle" id="theme-toggle">◐ Theme</button>
   </header>
   <nav class="tabbar">
-    <button class="tab on" data-tab="decisions">Decisions <span class="cnt">${decisions.length}</span></button>
-    ${hasBehaviour ? `<button class="tab" data-tab="behaviour">Behaviour <span class="cnt">${behaviourRows.length}</span></button>` : ""}
+    ${hasBehaviour ? `<button class="tab${defaultTab === "behaviour" ? " on" : ""}" data-tab="behaviour">Behaviour <span class="cnt">${behaviourRows.length}</span></button>` : ""}
+    <button class="tab${defaultTab === "decisions" ? " on" : ""}" data-tab="decisions">Decisions <span class="cnt">${decisions.length}</span></button>
     ${hasDiff ? `<button class="tab" data-tab="diff">Diff <span class="cnt">${changedFiles}</span></button>` : ""}
   </nav>
-  ${renderDecisionsTab(decisions, coverage)}
-  ${hasBehaviour ? renderBehaviourTab(decisions) : ""}
+  ${hasBehaviour ? renderBehaviourTab(decisions, defaultTab === "behaviour") : ""}
+  ${renderDecisionsTab(decisions, coverage, defaultTab === "decisions")}
   ${hasDiff ? renderDiffTab(diff, decisions, coverage) : ""}
 </div>
 <script>
