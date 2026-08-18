@@ -1,83 +1,236 @@
 {
-  "pr": { "number": "482", "title": "fix: skip records with an unrecognized category", "repo": "example/orders-service" },
-  "paths": [
-    {
-      "id": "p1",
-      "kind": "changed",
-      "label": "Record arrives with an unrecognized category",
-      "sub": "the upstream client's unknown-enum sentinel",
-      "beforeText": "threw, then poison-retry looped",
-      "afterText": "skipped, logged, metered",
-      "beforeProvenance": "author",
-      "beforeNote": "Before-state is the author's own root-cause account, not reconstruction.",
-      "beforeSrc": "PR description · Root cause",
-      "divergeAt": 1,
-      "divergeNote": "order-subscription.ts:279 — the guard that is the fix",
-      "before": [
-        { "main": "Event arrives · <span class='kw'>category = \"__unknown__\"</span>", "note": "adapters cast the sentinel straight into the domain type", "ev": "sentinel" },
-        { "main": "flows into <span class='kw'>categoryLabel</span>", "note": "exhaustive switch, no arm matches", "ev": "switch", "bad": true, "decisions": ["d5"] },
-        { "main": "<span class='kw'>throws</span> on the unrecognized value", "note": "handler logs and rethrows", "ev": "switch", "bad": true },
-        { "main": "queue redelivers → <span class='kw'>poison-retry loop</span>", "note": "the error-tracking monitor fires", "ev": "switch", "bad": true, "terminal": true }
-      ],
-      "after": [
-        { "main": "Event arrives · <span class='kw'>category = \"__unknown__\"</span>", "note": "same input reaches the subscription", "ev": "guard" },
-        { "main": "<span class='kw'>shouldSkipUnrecognizedCategory</span> → true", "note": "value is not in RECOGNIZED_CATEGORIES", "ev": "isRec", "decisions": ["d1", "d2"] },
-        { "main": "<span class='kw'>logger.warn</span> + skip metric", "note": "the skip is observable, not silent", "ev": "skip", "decisions": ["d4"] },
-        { "main": "<span class='kw'>return</span> — no record fetch, no downstream call, no throw", "note": "message acknowledged; nothing downstream runs", "ev": "guard", "good": true, "terminal": true }
-      ]
-    },
-    {
-      "id": "p2",
-      "kind": "new",
-      "label": "A LINKED record has an unrecognized category",
-      "sub": "during event enrichment",
-      "afterText": "treated as absent",
-      "divergeAt": null,
-      "after": [
-        { "main": "Enriching an event, fetch the <span class='kw'>linked record</span>", "note": "adds related-record properties to the current event", "ev": "linked" },
-        { "main": "Linked record carries the sentinel category", "note": "same bad value, on a neighbouring record", "ev": "linked", "bad": true },
-        { "main": "<span class='kw'>shouldSkip</span> true → stays <span class='kw'>null</span>", "note": "treated as absent rather than throwing mid-enrichment", "ev": "linked", "decisions": ["d3"] },
-        { "main": "Current event ships <span class='kw'>without</span> linked-record data", "note": "graceful degradation — the current event is not lost", "ev": "linked", "good": true, "terminal": true }
-      ]
-    },
-    {
-      "id": "p3",
-      "kind": "unchanged",
-      "label": "Recognized category",
-      "sub": "standard / express / bulk / null",
-      "afterText": "processed normally",
-      "regression": true,
-      "divergeAt": null,
-      "after": [
-        { "main": "Event arrives · <span class='kw'>category = \"standard\"</span>", "note": "or null — a valid domain value", "ev": "guard" },
-        { "main": "<span class='kw'>isRecognizedCategory</span> → true", "note": "in the recognized set; null counts too", "ev": "isRec", "decisions": ["d6"] },
-        { "main": "guard returns false → falls through", "note": "no skip, no metric", "ev": "guard" },
-        { "main": "Record fetched, enriched, forwarded downstream", "note": "identical to pre-PR behaviour", "ev": "guard", "good": true, "terminal": true }
-      ]
-    }
-  ],
+  "pr": {
+    "number": "482",
+    "title": "fix: skip records with an unrecognized category",
+    "repo": "example/orders-service"
+  },
   "decisions": [
     {
       "id": "d1",
       "title": "Skip unrecognized categories — don't throw",
       "source": "author",
       "chose": "Detect the out-of-union value and pass the record over.",
-      "rejected": "Let it reach the exhaustive <code>switch</code> and throw, or widen the union to accept it",
+      "rejected": "Let it reach the exhaustive switch and throw, or widen the union to accept it",
       "why": "The upstream service emits categories outside our closed union; its generated client surfaces them as an unknown-enum sentinel that adapters cast in blindly. That value hit an exhaustive switch and threw — and since the handler logs-and-rethrows, it became a poison-message retry loop. The upstream team confirmed these records should be ignored.",
       "quote": "We confirmed with the upstream team that these records should be ignored / passed over.",
       "quoteSrc": "PR description · Root cause",
-      "paths": ["p1"]
+      "evidence": [
+        {
+          "kind": "divergence",
+          "provenance": "author",
+          "provNote": "Before-state is the author's own root-cause account, not reconstruction.",
+          "provSrc": "PR description · Root cause",
+          "before": [
+            {
+              "step": "Event arrives · category = \"__unknown__\"",
+              "note": "adapters cast the sentinel straight into the domain type"
+            },
+            {
+              "step": "flows into categoryLabel",
+              "note": "exhaustive switch, no arm matches",
+              "bad": true
+            },
+            {
+              "step": "throws on the unrecognized value",
+              "note": "handler logs and rethrows",
+              "bad": true
+            },
+            {
+              "step": "queue redelivers → poison-retry loop",
+              "note": "the error-tracking monitor fires",
+              "bad": true,
+              "terminal": true
+            }
+          ],
+          "after": [
+            {
+              "step": "Event arrives · category = \"__unknown__\"",
+              "note": "same input reaches the subscription"
+            },
+            {
+              "step": "shouldSkipUnrecognizedCategory → true",
+              "note": "record.category is not in RECOGNIZED_CATEGORIES"
+            },
+            {
+              "step": "return — no record fetch, no downstream call, no throw",
+              "note": "message acknowledged; nothing downstream runs",
+              "good": true,
+              "terminal": true
+            }
+          ],
+          "divergeAt": 1,
+          "divergeNote": "order-subscription.ts:279 — the guard that is the fix",
+          "tests": [
+            { "name": "skips and meters a record with an unrecognized category", "file": "src/subscription/order-subscription.test.ts" },
+            { "name": "does not throw or fetch downstream on the sentinel", "file": "src/subscription/order-subscription.test.ts" }
+          ],
+          "code": {
+            "file": "src/subscription/order-subscription.ts",
+            "lines": "276-281",
+            "hl": [
+              279,
+              279
+            ],
+            "context": false,
+            "rows": [
+              [
+                "276",
+                "  async orderCreated({ order: record, occurred }): Promise<void> {",
+                0
+              ],
+              [
+                "277",
+                "    await this.trace(\"orderCreated\", async (span) => {",
+                0
+              ],
+              [
+                "278",
+                "      span?.setTag(\"order_id\", record.id);",
+                0
+              ],
+              [
+                "279",
+                "      if (this.shouldSkipUnrecognizedCategory(record)) return;",
+                1
+              ],
+              [
+                "280",
+                "      const customer = await this.orderCustomer(record);",
+                0
+              ],
+              [
+                "281",
+                "      if (!customer) return;",
+                0
+              ]
+            ]
+          }
+        }
+      ]
     },
     {
       "id": "d2",
       "title": "Guard once in the shared business layer, not per adapter",
       "source": "author",
-      "chose": "Put the check in <code>OrderSubscription</code>, which every adapter funnels through.",
+      "chose": "Put the check in OrderSubscription, which every adapter funnels through.",
       "rejected": "Validate in each adapter — queue handlers, the poller, the linked-record fetch",
       "why": "The unsafe cast happens in several adapters, but they all converge on the subscription before business logic runs. One choke point covers every entry point — created, updated, cancelled, fulfilled, refunded — instead of scattering the same validation and missing one.",
       "quote": "OrderSubscription — the single business layer all adapters funnel through — now skips records with an unrecognized category at every entry point.",
       "quoteSrc": "PR description · Change",
-      "paths": ["p1"]
+      "evidence": [
+        {
+          "kind": "anchor",
+          "claim": "The predicate lives on the subscription and is called from every entry point, so no adapter can bypass it.",
+          "code": {
+            "file": "src/subscription/order-subscription.ts",
+            "lines": "137-145",
+            "hl": [
+              137,
+              138
+            ],
+            "context": false,
+            "rows": [
+              [
+                "137",
+                "  private shouldSkipUnrecognizedCategory(record: Order): boolean {",
+                1
+              ],
+              [
+                "138",
+                "    if (isRecognizedCategory(record.category)) return false;",
+                1
+              ],
+              [
+                "139",
+                "    this.logger.warn(",
+                1
+              ],
+              [
+                "140",
+                "      { order_id: record.id, category: record.category },",
+                1
+              ],
+              [
+                "141",
+                "      \"skipping record with unrecognized category\",",
+                1
+              ],
+              [
+                "142",
+                "    );",
+                1
+              ],
+              [
+                "143",
+                "    this.metrics.increment(\"record_skipped_unrecognized_category\");",
+                1
+              ],
+              [
+                "144",
+                "    return true;",
+                1
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "d4",
+      "title": "Make every skip observable",
+      "source": "author",
+      "chose": "Warning log plus a new record_skipped_unrecognized_category metric.",
+      "rejected": "Skip silently",
+      "why": "A silent skip and a lost message look identical from outside — and this path exists because an upstream contract is leaking. The metric turns 'we're dropping records' into a rate the team can alarm on and hand back upstream. The skip is a symptom worth watching, not a fix to forget.",
+      "quote": "Skips are observable: a warning log + a new record_skipped_unrecognized_category metric.",
+      "quoteSrc": "PR description · Change",
+      "evidence": [
+        {
+          "kind": "anchor",
+          "claim": "Before returning true, the predicate emits a structured warning and increments a dedicated counter.",
+          "code": {
+            "file": "src/subscription/order-subscription.ts",
+            "lines": "139-144",
+            "hl": [
+              139,
+              143
+            ],
+            "context": false,
+            "rows": [
+              [
+                "139",
+                "    this.logger.warn(",
+                1
+              ],
+              [
+                "140",
+                "      { order_id: record.id, category: record.category },",
+                1
+              ],
+              [
+                "141",
+                "      \"skipping record with unrecognized category\",",
+                1
+              ],
+              [
+                "142",
+                "    );",
+                1
+              ],
+              [
+                "143",
+                "    this.metrics.increment(\"record_skipped_unrecognized_category\");",
+                1
+              ],
+              [
+                "144",
+                "    return true;",
+                1
+              ]
+            ]
+          }
+        }
+      ]
     },
     {
       "id": "d3",
@@ -88,94 +241,526 @@
       "why": "Enrichment reads the record's linked sibling. If that record carries a sentinel category, the same switch would throw mid-enrichment — turning an unprocessable neighbour into a failure of the current event. Treating it as absent degrades gracefully: the current event still ships.",
       "quote": "Treat a linked record with an unrecognized category as if there were none, rather than throwing while building its event properties.",
       "quoteSrc": "code comment · order-subscription.ts:643",
-      "paths": ["p2"]
-    },
-    {
-      "id": "d4",
-      "title": "Make every skip observable",
-      "source": "author",
-      "chose": "Warning log plus a new <code>record_skipped_unrecognized_category</code> metric.",
-      "rejected": "Skip silently",
-      "why": "A silent skip and a lost message look identical from outside — and this path exists because an upstream contract is leaking. The metric turns 'we're dropping records' into a rate the team can alarm on and hand back upstream. The skip is a symptom worth watching, not a fix to forget.",
-      "quote": "Skips are observable: a warning log + a new record_skipped_unrecognized_category metric.",
-      "quoteSrc": "PR description · Change",
-      "paths": ["p1"]
+      "evidence": [
+        {
+          "kind": "trace",
+          "trace": [
+            {
+              "step": "Enriching an event, fetch the linked record",
+              "note": "adds related-record properties to the current event"
+            },
+            {
+              "step": "Linked record carries the sentinel category",
+              "note": "same bad value, on a neighbouring record",
+              "bad": true
+            },
+            {
+              "step": "shouldSkipUnrecognizedCategory(linked) → guarded off",
+              "note": "linkedRecord stays null instead of being built"
+            },
+            {
+              "step": "Current event ships without linked-record data",
+              "note": "the current event is not lost",
+              "good": true,
+              "terminal": true
+            }
+          ],
+          "tests": [
+            { "name": "treats a linked record with an unrecognized category as absent", "file": "src/subscription/order-subscription.test.ts" },
+            { "name": "still ships the current event when the linked record is skipped", "file": "src/subscription/order-subscription.test.ts" }
+          ],
+          "code": {
+            "file": "src/subscription/order-subscription.ts",
+            "lines": "640-647",
+            "hl": [
+              643,
+              646
+            ],
+            "context": false,
+            "rows": [
+              [
+                "640",
+                "      const linked = raw ? orderFromClient(raw) : null;",
+                0
+              ],
+              [
+                "641",
+                "      let linkedRecord: LinkedRecordEntry | null = null;",
+                0
+              ],
+              [
+                "643",
+                "      // Treat a linked record with an unrecognized category as if there",
+                1
+              ],
+              [
+                "644",
+                "      // were none, rather than throwing while building properties.",
+                1
+              ],
+              [
+                "646",
+                "      if (linked && !this.shouldSkipUnrecognizedCategory(linked)) {",
+                1
+              ],
+              [
+                "647",
+                "        const [details, address] = await Promise.all([",
+                0
+              ]
+            ]
+          }
+        }
+      ]
     },
     {
       "id": "d5",
       "title": "Leave the exhaustive switch as an unreachable invariant",
       "source": "author",
-      "chose": "Keep <code>categoryLabel</code>'s throwing switch untouched.",
-      "rejected": "Add a <code>default</code> arm to absorb unknown values",
+      "chose": "Keep categoryLabel's throwing switch untouched.",
+      "rejected": "Add a default arm to absorb unknown values",
       "why": "The upstream guard means the switch can no longer be reached with a bad value. Softening it with a default would silently absorb future real bugs; keeping it strict documents the invariant 'everything reaching here is recognized' and still throws loudly if a different path ever breaks that.",
       "quote": "The exhaustive switch in categoryLabel is left as-is (now an unreachable defensive invariant).",
       "quoteSrc": "PR description · Change",
       "note": "A deliberate non-change — invisible in the diff.",
-      "paths": ["p1"]
+      "evidence": [
+        {
+          "kind": "anchor",
+          "claim": "categoryLabel is unchanged by this PR. Its exhaustive switch has no default arm; before the fix the sentinel reached it and threw, after the fix the guard means it never does.",
+          "code": {
+            "file": "src/models/order.ts",
+            "lines": "~137",
+            "context": true,
+            "hl": [],
+            "rows": [
+              [
+                "—",
+                "// categoryLabel — NOT changed by this PR.",
+                0
+              ],
+              [
+                "—",
+                "// Exhaustive switch over OrderCategory, no default arm:",
+                0
+              ],
+              [
+                "—",
+                "//   case \"standard\": ... case \"bulk\": ...",
+                0
+              ],
+              [
+                "—",
+                "//   default: throw new Error(`unhandled category ...`)",
+                0
+              ]
+            ]
+          }
+        }
+      ]
     },
     {
       "id": "d6",
       "title": "Count null as a recognized category",
       "source": "infer",
-      "chose": "Include <code>null</code> in the recognized set, so it processes normally.",
+      "chose": "Include null in the recognized set, so it processes normally.",
       "rejected": "Treat null as unrecognized and skip it too",
-      "why": "<code>null</code> is a legitimate member of <code>OrderCategory</code> ('no specific category'), distinct from the sentinel string signalling an out-of-union value. Skipping null would drop valid records that simply have no category assigned.",
+      "why": "null is a legitimate member of OrderCategory ('no specific category'), distinct from the sentinel string signalling an out-of-union value. Skipping null would drop valid records that simply have no category assigned.",
       "inferNote": "The code marks null as recognized with an inline comment, but the reasoning — that null is a valid domain value unlike the sentinel — is reconstructed from the type definition. The PR body doesn't discuss null, and the rejected alternative is illustrative.",
       "inferSrc": "inferred from order.ts:47 + the recognized set at :54-60",
-      "paths": ["p3"]
+      "evidence": [
+        {
+          "kind": "trace",
+          "regression": true,
+          "trace": [
+            {
+              "step": "Event arrives · category = \"standard\" or null",
+              "note": "a valid domain value"
+            },
+            {
+              "step": "isRecognizedCategory → true",
+              "note": "in the recognized set; null is a member"
+            },
+            {
+              "step": "guard returns false → falls through",
+              "note": "no skip, no metric"
+            },
+            {
+              "step": "Record fetched, enriched, forwarded downstream",
+              "note": "identical to pre-PR behaviour",
+              "good": true,
+              "terminal": true
+            }
+          ],
+          "tests": [
+            { "name": "processes standard/express/bulk unchanged", "file": "src/subscription/order-subscription.test.ts" },
+            { "name": "treats null as recognized and does not skip it", "file": "src/subscription/order-subscription.test.ts" }
+          ],
+          "code": {
+            "file": "src/models/order.ts",
+            "lines": "54-68",
+            "hl": [
+              59,
+              59
+            ],
+            "context": false,
+            "rows": [
+              [
+                "47",
+                "export type OrderCategory = \"standard\" | \"express\" | \"bulk\" | null;",
+                0
+              ],
+              [
+                "54",
+                "const RECOGNIZED_CATEGORIES = new Set<OrderCategory>([",
+                1
+              ],
+              [
+                "55",
+                "  \"standard\", \"express\", \"bulk\",",
+                1
+              ],
+              [
+                "59",
+                "  null /* no specific category */,",
+                1
+              ],
+              [
+                "60",
+                "]);",
+                1
+              ],
+              [
+                "66",
+                "export function isRecognizedCategory(category: OrderCategory): boolean {",
+                1
+              ],
+              [
+                "67",
+                "  return RECOGNIZED_CATEGORIES.has(category);",
+                1
+              ],
+              [
+                "68",
+                "}",
+                1
+              ]
+            ]
+          }
+        }
+      ]
     }
   ],
-  "code": {
-    "sentinel": { "file": "src/models/order.ts", "lines": "47-53", "hl": [49, 53], "rows": [
-      ["47", "export type OrderCategory = \"standard\" | \"express\" | \"bulk\" | null;", 0],
-      ["49", "// The upstream service can emit values outside this set (surfaced by", 1],
-      ["50", "// the unknown-enum sentinel in its generated client), which adapters", 1],
-      ["51", "// cast blindly into `OrderCategory`. Per the upstream team, records", 1],
-      ["52", "// with an unrecognized category should be ignored rather than", 1],
-      ["53", "// processed ...", 1]
-    ]},
-    "switch": { "file": "src/models/order.ts", "lines": "~137", "context": true, "hl": [], "rows": [
-      ["—", "// categoryLabel — NOT changed by this PR.", 1],
-      ["—", "// Exhaustive switch over OrderCategory, no default arm:", 1],
-      ["—", "//   case \"standard\": ... case \"bulk\": ...", 1],
-      ["—", "//   default: throw new Error(`unhandled category ...`)", 1],
-      ["—", "// Before: the sentinel reached here and threw.", 1],
-      ["—", "// After: the upstream guard means it never does.", 1]
-    ]},
-    "isRec": { "file": "src/models/order.ts", "lines": "54-68", "hl": [54, 68], "rows": [
-      ["54", "const RECOGNIZED_CATEGORIES = new Set<OrderCategory>([", 1],
-      ["55", "  \"standard\", \"express\", \"bulk\",", 1],
-      ["59", "  null /* no specific category */,", 1],
-      ["60", "]);", 1],
-      ["66", "export function isRecognizedCategory(category: OrderCategory): boolean {", 1],
-      ["67", "  return RECOGNIZED_CATEGORIES.has(category);", 1],
-      ["68", "}", 1]
-    ]},
-    "skip": { "file": "src/subscription/order-subscription.ts", "lines": "137-145", "hl": [138, 144], "rows": [
-      ["137", "  private shouldSkipUnrecognizedCategory(record: Order): boolean {", 1],
-      ["138", "    if (isRecognizedCategory(record.category)) return false;", 1],
-      ["139", "    this.logger.warn(", 1],
-      ["140", "      { order_id: record.id, category: record.category },", 1],
-      ["141", "      \"skipping record with unrecognized category\",", 1],
-      ["142", "    );", 1],
-      ["143", "    this.metrics.increment(\"record_skipped_unrecognized_category\");", 1],
-      ["144", "    return true;", 1]
-    ]},
-    "guard": { "file": "src/subscription/order-subscription.ts", "lines": "276-281", "hl": [279, 279], "rows": [
-      ["276", "  async orderCreated({ order: record, occurred }): Promise<void> {", 0],
-      ["277", "    await this.trace(\"orderCreated\", async (span) => {", 0],
-      ["278", "      span?.setTag(\"order_id\", record.id);", 0],
-      ["279", "      if (this.shouldSkipUnrecognizedCategory(record)) return;", 1],
-      ["280", "      const customer = await this.orderCustomer(record);", 0],
-      ["281", "      if (!customer) return;", 0]
-    ]},
-    "linked": { "file": "src/subscription/order-subscription.ts", "lines": "640-647", "hl": [643, 646], "rows": [
-      ["640", "      const linked = raw ? orderFromClient(raw) : null;", 0],
-      ["641", "      let linkedRecord: LinkedRecordEntry | null = null;", 0],
-      ["643", "      // Treat a linked record with an unrecognized category as if there", 1],
-      ["644", "      // were none, rather than throwing while building properties.", 1],
-      ["646", "      if (linked && !this.shouldSkipUnrecognizedCategory(linked)) {", 1],
-      ["647", "        const [details, address] = await Promise.all([", 0]
-    ]}
-  }
+  "coverage": {
+    "explained": [
+      {
+        "file": "src/subscription/order-subscription.ts",
+        "byDecisions": [
+          "d1",
+          "d2",
+          "d3",
+          "d4"
+        ]
+      },
+      {
+        "file": "src/models/order.ts",
+        "byDecisions": [
+          "d6"
+        ]
+      }
+    ],
+    "mechanical": [],
+    "tests": [
+      {
+        "file": "src/subscription/order-subscription.test.ts",
+        "covers": "guard skips unrecognized; recognized + null fall through; linked-record treated as absent"
+      }
+    ],
+    "unexplained": []
+  },
+  "diff": [
+    {
+      "file": "src/subscription/order-subscription.ts",
+      "bucket": "explained",
+      "byDecisions": [
+        "d1",
+        "d2",
+        "d3",
+        "d4"
+      ],
+      "hunks": [
+        {
+          "header": "@@ -134,6 +134,12 @@",
+          "lines": [
+            {
+              "old": 134,
+              "new": 134,
+              "sign": " ",
+              "text": "  }",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 135,
+              "sign": "+",
+              "text": "  private shouldSkipUnrecognizedCategory(record: Order): boolean {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 136,
+              "sign": "+",
+              "text": "    if (isRecognizedCategory(record.category)) return false;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 137,
+              "sign": "+",
+              "text": "    this.logger.warn(",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 138,
+              "sign": "+",
+              "text": "      { order_id: record.id, category: record.category },",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 139,
+              "sign": "+",
+              "text": "      \"skipping record with unrecognized category\",",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 140,
+              "sign": "+",
+              "text": "    );",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 141,
+              "sign": "+",
+              "text": "    this.metrics.increment(\"record_skipped_unrecognized_category\");",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 142,
+              "sign": "+",
+              "text": "    return true;",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 143,
+              "sign": "+",
+              "text": "  }",
+              "decision": "d2"
+            },
+            {
+              "old": 135,
+              "new": 144,
+              "sign": " ",
+              "text": "  async orderCreated({ order: record, occurred }): Promise<void> {",
+              "decision": "d2"
+            }
+          ]
+        },
+        {
+          "header": "@@ -276,6 +282,7 @@",
+          "lines": [
+            {
+              "old": 276,
+              "new": 282,
+              "sign": " ",
+              "text": "    await this.trace(\"orderCreated\", async (span) => {",
+              "decision": null
+            },
+            {
+              "old": 277,
+              "new": 283,
+              "sign": " ",
+              "text": "      span?.setTag(\"order_id\", record.id);",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 284,
+              "sign": "+",
+              "text": "      if (this.shouldSkipUnrecognizedCategory(record)) return;",
+              "decision": null
+            },
+            {
+              "old": 278,
+              "new": 285,
+              "sign": " ",
+              "text": "      const customer = await this.orderCustomer(record);",
+              "decision": null
+            },
+            {
+              "old": 279,
+              "new": 286,
+              "sign": " ",
+              "text": "      if (!customer) return;",
+              "decision": null
+            }
+          ]
+        },
+        {
+          "header": "@@ -640,7 +647,9 @@",
+          "lines": [
+            {
+              "old": 640,
+              "new": 647,
+              "sign": " ",
+              "text": "      const linked = raw ? orderFromClient(raw) : null;",
+              "decision": "d3"
+            },
+            {
+              "old": 641,
+              "new": 648,
+              "sign": " ",
+              "text": "      let linkedRecord: LinkedRecordEntry | null = null;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 649,
+              "sign": "+",
+              "text": "      // Treat a linked record with an unrecognized category as if there",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 650,
+              "sign": "+",
+              "text": "      // were none, rather than throwing while building properties.",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 651,
+              "sign": "+",
+              "text": "      if (linked && !this.shouldSkipUnrecognizedCategory(linked)) {",
+              "decision": null
+            },
+            {
+              "old": 642,
+              "new": 652,
+              "sign": " ",
+              "text": "        const [details, address] = await Promise.all([",
+              "decision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "src/models/order.ts",
+      "bucket": "explained",
+      "byDecisions": [
+        "d6"
+      ],
+      "hunks": [
+        {
+          "header": "@@ -52,4 +52,15 @@",
+          "lines": [
+            {
+              "old": null,
+              "new": 52,
+              "sign": "+",
+              "text": "const RECOGNIZED_CATEGORIES = new Set<OrderCategory>([",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 53,
+              "sign": "+",
+              "text": "  \"standard\", \"express\", \"bulk\",",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 54,
+              "sign": "+",
+              "text": "  null /* no specific category */,",
+              "decision": "d6"
+            },
+            {
+              "old": null,
+              "new": 55,
+              "sign": "+",
+              "text": "]);",
+              "decision": "d6"
+            },
+            {
+              "old": null,
+              "new": 56,
+              "sign": "+",
+              "text": "",
+              "decision": "d6"
+            },
+            {
+              "old": null,
+              "new": 57,
+              "sign": "+",
+              "text": "export function isRecognizedCategory(category: OrderCategory): boolean {",
+              "decision": "d6"
+            },
+            {
+              "old": null,
+              "new": 58,
+              "sign": "+",
+              "text": "  return RECOGNIZED_CATEGORIES.has(category);",
+              "decision": "d6"
+            },
+            {
+              "old": null,
+              "new": 59,
+              "sign": "+",
+              "text": "}",
+              "decision": "d6"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "src/subscription/order-subscription.test.ts",
+      "bucket": "tests",
+      "byDecisions": [],
+      "hunks": [
+        {
+          "header": "@@ -0,0 +1,3 @@",
+          "lines": [
+            {
+              "old": null,
+              "new": 1,
+              "sign": "+",
+              "text": "describe(\"unrecognized category\", () => {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 2,
+              "sign": "+",
+              "text": "  it(\"skips and meters\", () => {});",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 3,
+              "sign": "+",
+              "text": "});",
+              "decision": null
+            }
+          ]
+        }
+      ]
+    }
+  ]
 }

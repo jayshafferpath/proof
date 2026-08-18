@@ -38,8 +38,10 @@ PR diff + body + commit messages
         ▼  docs/generation-prompt.md
    walkthrough data (JSON)
         │
-        ▼  node validate.js
-   prototype/index.html  ← data embedded, opens anywhere
+        ▼  node validate.js       (provenance + evidence checks)
+        │
+        ▼  node generate.js       (data + generator/style.css)
+   prototype/index.html  ← self-contained, opens anywhere
 ```
 
 The generator drafts; **the author verifies before publishing**. Every inferred decision the
@@ -68,12 +70,15 @@ unreachable invariant" is invisible in a diff and often the most valuable thing 
 
 ```
 prototype/
-  index.html            self-contained walkthrough (open directly)
-  data/sample-fix.json  sample walkthrough data
+  index.html            generated walkthrough (open directly)
+  data/sample-fix.json  sample walkthrough data (decision-spine)
+generator/
+  style.css             the artifact's stylesheet, inlined at generate time
+generate.js             renders data → self-contained index.html
+validate.js             enforces the provenance and evidence rules
 docs/
   design.md             the model, and what is settled vs. open
   generation-prompt.md  the prompt that produces walkthrough data
-validate.js             enforces the provenance and linking rules
 ```
 
 ## Status
