@@ -204,6 +204,11 @@ pre.code { margin: 0; font-family: var(--mono); font-size: 12.5px; line-height: 
 /* ============ Diff tab ============ */
 .diff { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 380px); min-height: 0; height: 100%; }
 .diff-files { overflow-y: auto; padding: 14px 18px 60px; }
+.diff-sort { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+.diff-sort-lbl { font-size: 11px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; margin-right: 2px; }
+.diff-sort-btn { font: inherit; font-size: 11.5px; font-weight: 550; cursor: pointer; color: var(--ink-2); background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; }
+.diff-sort-btn:hover { color: var(--ink); border-color: var(--line-2); }
+.diff-sort-btn.on { color: var(--accent-ink); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
 .diff-file { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin-bottom: 12px; background: var(--surface); }
 .diff-fhead { display: flex; align-items: center; gap: 10px; padding: 9px 13px; border-bottom: 1px solid var(--line); font-family: var(--mono); font-size: 12px; color: var(--ink); background: var(--surface-2); cursor: pointer; }
 .diff-file.collapsed .diff-fhead { border-bottom: none; }
@@ -236,6 +241,10 @@ pre.diff-code { margin: 0; font-family: var(--mono); font-size: 12px; line-heigh
 /* reasoning drawer */
 .diff-why { border-left: 1px solid var(--line); overflow-y: auto; padding: 16px 20px 60px; background: var(--ground); }
 .diff-why .dcard { border: none; box-shadow: none; background: none; padding: 4px 0; margin: 0; }
+.diff-why .dcard.compact .dd-title { font-size: 16px; margin: 10px 0 8px; line-height: 1.32; }
+.diff-why .dcard.compact .dd-chose { font-size: 13.5px; margin-bottom: 12px; }
+.diff-why .dcard.compact .why { font-size: 13.5px; line-height: 1.55; }
+.diff-why .dcard.compact .contrast { margin-bottom: 14px; }
 .diff-why-empty { color: var(--ink-3); font-size: 12.5px; padding: 8px 2px; }
 .why-card[hidden], #diff-why-empty[hidden] { display: none; }
 .diff-why-hint { font-size: 11px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; margin-bottom: 10px; }

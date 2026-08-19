@@ -1,7 +1,7 @@
 {
   "pr": {
     "number": "1227",
-    "title": "Send a practice's report link to its HubSpot contact, behind a marketing flag",
+    "title": "NEV-1645: Send a practice's report link to its HubSpot contact, behind a marketing flag",
     "repo": "pathccm/marketing",
     "headSha": "d725f3d42078968afafb9e4f70b02ad8db3a4cae",
     "baseSha": "746e04c11cc4fe9c4e6b1e6b46ce0358909bcfa3"
@@ -9,293 +9,73 @@
   "decisions": [
     {
       "id": "d1",
-      "title": "Marketing is a pure passthrough — forward three fields, touch no storage",
+      "title": "Ship the whole send path behind an off-by-default flag that fails closed",
       "source": "author",
-      "chose": "Forward <code>couchdrop_shared_link_url</code> + <code>practice_email</code> + <code>email_type</code> straight to HubSpot.",
-      "rejected": "Have marketing read S3 / call Couchdrop / hold Couchdrop credentials to build the link itself",
-      "why": "Scoping the marketing side to a passthrough keeps the blast radius tiny: it reads no S3, calls no Couchdrop, and holds no Couchdrop credentials. Every field it sends arrives on the event; the payload builder is the whole of its data handling. That is what lets this ship as a small, low-impact change.",
-      "quote": "Marketing is a pure passthrough — it forwards couchdrop_shared_link_url + practice_email + email_type straight through; it reads no S3, calls no Couchdrop, and holds no Couchdrop credentials.",
-      "quoteSrc": "PR description",
+      "chose": "Gate the entire practice-report send behind `marketing-practice-report-send-enabled`, shipped off, with `fallback: false` so an unreachable flag source withholds.",
+      "rejected": "Ship the send path live, or use a flag that fails open when LaunchDarkly is unreachable.",
+      "why": "With the flag off and no other subscription touched, the PR is a no-op in production until deliberately enabled — so it can land safely and be rolled back by a flag flip during a HubSpot incident, no redeploy. Failing closed means a LaunchDarkly outage withholds sends rather than blasting them.",
+      "quote": "Behind a feature flag — `marketing-practice-report-send-enabled` ships **off** in LaunchDarkly and is enabled deliberately after deploy... Fails closed (`fallback: false`); an unreachable flag source withholds.",
+      "quoteSrc": "PR body, Risk Mitigations",
       "evidence": [
         {
           "kind": "anchor",
-          "claim": "The entire payload is three fields lifted off the message — no fetch, no credential, no enrichment.",
-          "code": {
-            "file": "packages/marketing/src/subscription/practice-report.default.ts",
-            "lines": "72-78",
-            "hl": [
-              73,
-              77
-            ],
-            "context": false,
-            "rows": [
-              [
-                "72",
-                "function buildPayload(msg: PracticeReportGeneratedMessage): HubSpotPracticeReportWebhookPayload {",
-                1
-              ],
-              [
-                "73",
-                "  return {",
-                1
-              ],
-              [
-                "74",
-                "    email_type: msg.emailType,",
-                1
-              ],
-              [
-                "75",
-                "    practice_email: msg.practiceEmail,",
-                1
-              ],
-              [
-                "76",
-                "    couchdrop_shared_link_url: msg.couchdropSharedLinkUrl,",
-                1
-              ],
-              [
-                "77",
-                "  };",
-                1
-              ],
-              [
-                "78",
-                "}",
-                1
-              ]
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "id": "d2",
-      "title": "Gate the send behind a flag that ships off, keyed on practice with no PHI",
-      "source": "author",
-      "chose": "Evaluate <code>marketing-practice-report-send-enabled</code> with context <code>{ kind: \"practice\", key: practice_sf_account_id }</code>, fallback false.",
-      "rejected": "Ship the send path live, or key the flag on the recipient / patient",
-      "why": "The flag ships off and is flipped on deliberately after deploy, so the new path changes no behaviour until intended — and flipping it off withholds sends during a HubSpot incident with no redeploy. The context carries only the Salesforce account id, never a recipient or patient identifier, so no PHI/PII reaches LaunchDarkly. It fails closed: an unreachable flag source withholds rather than sends.",
-      "quote": "Context is { kind: \"practice\", key: practice_sf_account_id } (no PHI/PII in context). Fails closed (fallback: false); an unreachable flag source withholds.",
-      "quoteSrc": "PR description · Risk Mitigations",
-      "evidence": [
-        {
-          "kind": "anchor",
-          "claim": "The flag key, the practice-only context, and the false fallback are all set at the one call site.",
+          "claim": "The LaunchDarkly evaluation defaults to false and carries only `{ kind: \"practice\", key: practiceSfAccountId }` in context — no PHI/PII.",
           "code": {
             "file": "packages/marketing/src/features/general-features.ld.ts",
-            "lines": "41-49",
+            "lines": "43-53",
             "hl": [
-              42,
-              48
+              44,
+              52
             ],
             "context": false,
             "rows": [
               [
-                "41",
+                "43",
                 "  async shouldSendPracticeReportEmail(practiceSfAccountId: string): Promise<boolean> {",
                 1
               ],
               [
-                "42",
+                "44",
                 "    return await variation({",
                 1
               ],
               [
-                "43",
+                "45",
                 "      key: \"marketing-practice-report-send-enabled\",",
                 1
               ],
               [
-                "44",
+                "46",
                 "      context: {",
                 1
               ],
               [
-                "45",
+                "47",
                 "        kind: \"practice\",",
                 1
               ],
               [
-                "46",
+                "48",
                 "        key: practiceSfAccountId,",
                 1
               ],
               [
-                "47",
+                "49",
                 "      },",
                 1
               ],
               [
-                "48",
+                "50",
                 "      fallback: false,",
                 1
               ],
               [
-                "49",
+                "51",
                 "    });",
                 1
-              ]
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "id": "d3",
-      "title": "Give the practice-report send its own payload type — don't widen the union",
-      "source": "author",
-      "chose": "Add <code>HubSpotPracticeReportWebhookPayload</code> as a separate type, accepted by <code>sendHubSpotWebhook</code> via a union at the parameter.",
-      "rejected": "Add the practice-report case as a member of the existing <code>HubSpotWebhookPayload</code> union",
-      "why": "The partner-referral HubSpotWebhookPayload union is closed over its EmailType, and buildPartnerReferralWebhookPayload relies on that closure to narrow. Adding a practice-report member would break that narrowing. A separate type carries no per-patient enrichment fields and leaves the existing union — and every consumer that narrows on it — untouched.",
-      "quote": "Deliberately not a member of HubSpotWebhookPayload: that union is closed over the partner-referral EmailType, and widening it breaks narrowing in buildPartnerReferralWebhookPayload.",
-      "quoteSrc": "code comment · hubspot-webhook-client.ts:26",
-      "evidence": [
-        {
-          "kind": "anchor",
-          "claim": "The new type stands alone; sendHubSpotWebhook accepts it as an added arm of a parameter union, so the closed partner-referral union is never widened.",
-          "code": {
-            "file": "packages/marketing/src/comms/hubspot-webhook-client.ts",
-            "lines": "33-45",
-            "hl": [
-              33,
-              37
-            ],
-            "context": false,
-            "rows": [
-              [
-                "33",
-                "export type HubSpotPracticeReportWebhookPayload = {",
-                1
               ],
               [
-                "34",
-                "  email_type: PracticeReportType;",
-                1
-              ],
-              [
-                "35",
-                "  practice_email: string;",
-                1
-              ],
-              [
-                "36",
-                "  couchdrop_shared_link_url: string;",
-                1
-              ],
-              [
-                "37",
-                "};",
-                1
-              ],
-              [
-                "43",
-                "export async function sendHubSpotWebhook(",
-                0
-              ],
-              [
-                "44",
-                "  payload: HubSpotWebhookPayload | HubSpotPracticeReportWebhookPayload,",
-                1
-              ],
-              [
-                "45",
-                "): Promise<HubSpotWebhookResult> {",
-                0
-              ]
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "id": "d4",
-      "title": "Decompose the handler into gate → claim → send",
-      "source": "author",
-      "chose": "Split <code>practiceReportGenerated</code> into three guard-clause steps: is-send-enabled, claim-slot, send-claimed.",
-      "rejected": "One method that flag-checks, claims, composes, POSTs, and releases inline",
-      "why": "Each step is a guard that returns early, so the happy path reads top to bottom and each precondition is checkable in isolation. It mirrors the established PartnerReferralSubscription flow (flag → claim → send → release-on-failure), so a reviewer who knows that precedent already knows this shape.",
-      "quote": "decompose practiceReportGenerated into gate/claim/send steps",
-      "quoteSrc": "commit 0edbc4e9",
-      "evidence": [
-        {
-          "kind": "trace",
-          "trace": [
-            {
-              "step": "practiceReportGenerated(msg) begins",
-              "note": "one message = one report to maybe send"
-            },
-            {
-              "step": "isSendEnabled → false short-circuits",
-              "note": "flag off: return before any claim",
-              "terminal": false
-            },
-            {
-              "step": "claimSlot → false short-circuits",
-              "note": "already claimed: return before any send"
-            },
-            {
-              "step": "sendClaimed(msg)",
-              "note": "only reached when enabled and freshly claimed",
-              "good": true,
-              "terminal": true
-            }
-          ],
-          "tests": [
-            { "name": "makes no HubSpot request when the flag is off", "file": "packages/marketing/src/subscription/practice-report.default.test.ts" },
-            { "name": "never claims a slot when the flag is off", "file": "packages/marketing/src/subscription/practice-report.default.test.ts" }
-          ],
-          "code": {
-            "file": "packages/marketing/src/subscription/practice-report.default.ts",
-            "lines": "21-30",
-            "hl": [
-              22,
-              29
-            ],
-            "context": false,
-            "rows": [
-              [
-                "21",
-                "  async practiceReportGenerated(msg: PracticeReportGeneratedMessage): Promise<void> {",
-                1
-              ],
-              [
-                "22",
-                "    if (!(await this.isSendEnabled(msg))) {",
-                1
-              ],
-              [
-                "23",
-                "      return;",
-                1
-              ],
-              [
-                "24",
-                "    }",
-                1
-              ],
-              [
-                "25",
-                "    if (!(await this.claimSlot(msg))) {",
-                1
-              ],
-              [
-                "26",
-                "      return;",
-                1
-              ],
-              [
-                "27",
-                "    }",
-                1
-              ],
-              [
-                "29",
-                "    await this.sendClaimed(msg);",
-                1
-              ],
-              [
-                "30",
+                "52",
                 "  }",
                 1
               ]
@@ -305,37 +85,234 @@
       ]
     },
     {
-      "id": "d5",
-      "title": "Claim an idempotency slot so redelivery never double-sends",
+      "id": "d2",
+      "title": "Keep the practice-report payload a separate type, not a member of the partner-referral union",
       "source": "author",
-      "chose": "Claim <code>(practice_id, report_type, batch_period)</code> before sending; a lost claim refuses the send.",
-      "rejected": "Send on every delivery, or check-then-insert (racy under concurrent partitions)",
-      "why": "Kafka is at-least-once and the consumer runs four partitions concurrently, so the same report can arrive more than once. The claim is an atomic INSERT ... ON CONFLICT DO NOTHING on a unique key; a redelivery loses the claim and makes no HubSpot request. That turns duplicate delivery into a no-op instead of a duplicate email.",
-      "quote": "claim uses INSERT ... ON CONFLICT (practice_id, report_type, batch_period) DO NOTHING; redelivery under at-least-once semantics refuses the claim and makes no HubSpot request.",
-      "quoteSrc": "PR description · Risk Mitigations",
+      "chose": "Declare `HubSpotPracticeReportWebhookPayload` as a standalone type and widen `sendHubSpotWebhook` to accept `HubSpotWebhookPayload | HubSpotPracticeReportWebhookPayload`.",
+      "rejected": "Add the practice-report shape as another arm of the existing `HubSpotWebhookPayload` union.",
+      "why": "The existing union is closed over the partner-referral `EmailType`, and its `buildPartnerReferralWebhookPayload` relies on narrowing that arm. Adding a member with a disjoint `email_type` would break that narrowing and change existing behaviour. A separate type leaves the partner-referral path byte-for-byte untouched.",
+      "quote": "Deliberately not a member of HubSpotWebhookPayload: that union is closed over the partner-referral EmailType, and widening it breaks narrowing in buildPartnerReferralWebhookPayload.",
+      "quoteSrc": "code comment in packages/marketing/src/comms/hubspot-webhook-client.ts",
+      "evidence": [
+        {
+          "kind": "anchor",
+          "claim": "The new payload type is declared separately and `sendHubSpotWebhook` accepts it via a union parameter, rather than extending `HubSpotWebhookPayload`.",
+          "code": {
+            "file": "packages/marketing/src/comms/hubspot-webhook-client.ts",
+            "lines": "27-45",
+            "hl": [
+              33,
+              43
+            ],
+            "context": false,
+            "rows": [
+              [
+                "27",
+                "/**",
+                1
+              ],
+              [
+                "28",
+                " * Practice-report send payload. Deliberately not a member of HubSpotWebhookPayload:",
+                1
+              ],
+              [
+                "29",
+                " * that union is closed over the partner-referral EmailType, and widening it breaks",
+                1
+              ],
+              [
+                "30",
+                " * narrowing in buildPartnerReferralWebhookPayload. Carries no per-patient enrichment",
+                1
+              ],
+              [
+                "31",
+                " * fields — HubSpot reads practice_email directly for the To: field, and email_type",
+                1
+              ],
+              [
+                "32",
+                " * routes to the correct workflow arm.",
+                1
+              ],
+              [
+                "33",
+                " */",
+                1
+              ],
+              [
+                "34",
+                "export type HubSpotPracticeReportWebhookPayload = {",
+                1
+              ],
+              [
+                "35",
+                "  email_type: PracticeReportType;",
+                1
+              ],
+              [
+                "36",
+                "  practice_email: string;",
+                1
+              ],
+              [
+                "37",
+                "  couchdrop_shared_link_url: string;",
+                1
+              ],
+              [
+                "38",
+                "};",
+                1
+              ],
+              [
+                "39",
+                "",
+                1
+              ],
+              [
+                "40",
+                "export type HubSpotWebhookResult = { status: \"sent\" } | { status: \"failed\"; reason: string };",
+                0
+              ],
+              [
+                "41",
+                "",
+                0
+              ],
+              [
+                "42",
+                "export async function sendHubSpotWebhook(",
+                0
+              ],
+              [
+                "43",
+                "  payload: HubSpotWebhookPayload | HubSpotPracticeReportWebhookPayload,",
+                1
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "d3",
+      "title": "Order the flow gate → claim → send so a withheld send never claims a slot",
+      "source": "author",
+      "chose": "Check the flag first and return early; only then claim the idempotency slot; only then send.",
+      "rejected": "Claim the slot up front and then check the flag, or send before recording the claim.",
+      "why": "If the flag is off, `practiceReportGenerated` returns before `claim` is ever called, so no slot is consumed — meaning a later flag flip re-drives cleanly instead of finding a phantom claim that suppresses the send. This ordering is what makes the rollback-and-re-enable story work.",
+      "quote": "a later flip re-drives cleanly since flag-off never claims a slot.",
+      "quoteSrc": "PR body, Rollback strategy",
       "evidence": [
         {
           "kind": "trace",
+          "regression": false,
           "trace": [
             {
-              "step": "claimSlot calls emailSends.claim(practice, emailType, batchPeriod)",
-              "note": "attempt to win the send for this batch"
+              "step": "<span class='kw'>isSendEnabled(msg)</span> evaluates the flag",
+              "note": "returns false when the flag is off; logs 'feature flag disabled, withholding send'."
             },
             {
-              "step": "claim returns false → already sent",
-              "note": "a prior delivery holds the slot",
+              "step": "guard returns early",
+              "note": "practiceReportGenerated returns before claimSlot is reached.",
               "bad": false
             },
             {
-              "step": "log 'already sent, skipping' and return",
-              "note": "no HubSpot request on redelivery",
+              "step": "no slot claimed, no HubSpot request",
+              "note": "claim() and sendHubSpotWebhook() are never called on this path.",
               "good": true,
               "terminal": true
             }
           ],
-          "tests": [
-            { "name": "claims the slot for (practice, report_type, batch_period)", "file": "packages/marketing/src/subscription/practice-report.default.test.ts" },
-            { "name": "refuses the claim and makes no HubSpot request on redelivery", "file": "packages/marketing/src/subscription/practice-report.default.test.ts" }
+          "code": {
+            "file": "packages/marketing/src/subscription/practice-report.default.ts",
+            "lines": "20-28",
+            "hl": [
+              21,
+              27
+            ],
+            "rows": [
+              [
+                "20",
+                "  async practiceReportGenerated(msg: PracticeReportGeneratedMessage): Promise<void> {",
+                1
+              ],
+              [
+                "21",
+                "    if (!(await this.isSendEnabled(msg))) {",
+                1
+              ],
+              [
+                "22",
+                "      return;",
+                1
+              ],
+              [
+                "23",
+                "    }",
+                1
+              ],
+              [
+                "24",
+                "    if (!(await this.claimSlot(msg))) {",
+                1
+              ],
+              [
+                "25",
+                "      return;",
+                1
+              ],
+              [
+                "26",
+                "    }",
+                1
+              ],
+              [
+                "27",
+                "    await this.sendClaimed(msg);",
+                1
+              ],
+              [
+                "28",
+                "  }",
+                1
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "d4",
+      "title": "Make redelivery idempotent via a claim that refuses when the slot is taken",
+      "source": "author",
+      "chose": "Claim a slot keyed on `(practice, report_type, batch_period)`; a redelivered event finds the slot claimed, `claim` returns false, and the flow returns before any HubSpot request.",
+      "rejected": "POST unconditionally and rely on downstream dedup, or check-then-insert without atomic conflict handling.",
+      "why": "Under at-least-once Kafka semantics with `partitionsConsumedConcurrently = 4`, the same event can arrive twice concurrently. `INSERT ... ON CONFLICT DO NOTHING` makes the claim atomic, so exactly one delivery wins and the loser makes no HubSpot request and releases nothing it didn't win.",
+      "quote": "claim uses `INSERT ... ON CONFLICT (practice_id, report_type, batch_period) DO NOTHING`; redelivery under at-least-once semantics refuses the claim and makes no HubSpot request.",
+      "quoteSrc": "PR body, Idempotency",
+      "evidence": [
+        {
+          "kind": "trace",
+          "regression": false,
+          "trace": [
+            {
+              "step": "flag enabled, <span class='kw'>claimSlot(msg)</span> called",
+              "note": "invokes emailSends.claim(practiceSfAccountId, emailType, batchPeriod)."
+            },
+            {
+              "step": "claim returns false (slot already held)",
+              "note": "logs 'already sent, skipping'; claimSlot returns false.",
+              "bad": false
+            },
+            {
+              "step": "flow returns, no send, no release",
+              "note": "sendClaimed is never reached; release is not called for a slot not won.",
+              "good": true,
+              "terminal": true
+            }
           ],
           "code": {
             "file": "packages/marketing/src/subscription/practice-report.default.ts",
@@ -344,7 +321,6 @@
               43,
               51
             ],
-            "context": false,
             "rows": [
               [
                 "42",
@@ -403,35 +379,151 @@
               ]
             ]
           }
-        },
+        }
+      ]
+    },
+    {
+      "id": "d5",
+      "title": "Release the claim on failure via a `sent` flag in `finally`, and rethrow",
+      "source": "infer",
+      "chose": "Track a `sent` boolean; on any failure (webhook status failed, or thrown error) the `finally` block releases the slot, and the thrown error propagates.",
+      "rejected": "Swallow the failure and leave the slot claimed, or release unconditionally including on success.",
+      "why": "A failed send that left the slot claimed would permanently suppress retries for that (practice, report_type, batch_period). Releasing only when `sent` is false frees the slot for the next batch while leaving a successful send's claim in place. Rethrowing lets the consumer's retry semantics engage rather than silently dropping the event.",
+      "inferNote": "The PR states 'releases the slot on failure' and 'propagates the failure so consumer retry semantics engage' (test names). The `sent`-flag mechanism and the reasoning that only unsuccessful sends release are reconstructed from the code; the release-on-failure intent is stated.",
+      "inferSrc": "packages/marketing/src/subscription/practice-report.default.ts sendClaimed try/finally",
+      "evidence": [
         {
-          "kind": "anchor",
-          "claim": "The atomicity this rests on is the repository's INSERT ... ON CONFLICT DO NOTHING — which lives on the base branch, not in this diff. You are trusting it holds.",
+          "kind": "divergence",
+          "provenance": "infer",
+          "provNote": "There is no prior practice-report path — 'before' is the naive alternative (swallow failure, leave slot claimed) a competent engineer could have written, not shipped code. Marked infer accordingly.",
+          "provSrc": "illustrative alternative; no pre-existing code",
+          "before": [
+            {
+              "step": "sendHubSpotWebhook returns { status: 'failed' }",
+              "note": "the POST did not succeed."
+            },
+            {
+              "step": "handler returns without releasing",
+              "note": "slot stays claimed for (practice, report_type, batch_period).",
+              "bad": true,
+              "terminal": true
+            }
+          ],
+          "after": [
+            {
+              "step": "sendHubSpotWebhook returns { status: 'failed' }",
+              "note": "the POST did not succeed."
+            },
+            {
+              "step": "throw Error with practice/emailType/batchPeriod context",
+              "note": "sent remains false; the error is raised inside the try."
+            },
+            {
+              "step": "finally releases the slot",
+              "note": "emailSends.release(practiceSfAccountId, emailType, batchPeriod) runs because sent is false.",
+              "good": true
+            },
+            {
+              "step": "error propagates to the consumer",
+              "note": "the thrown error is not caught here, so consumer retry engages.",
+              "good": true,
+              "terminal": true
+            }
+          ],
+          "divergeAt": 1,
+          "divergeNote": "packages/marketing/src/subscription/practice-report.default.ts:70-79 — throw inside try, release in finally when !sent",
           "code": {
-            "file": "packages/marketing/src/repository/practice-report-email-sends.postgres.ts",
-            "lines": "~claim",
-            "context": true,
-            "hl": [],
+            "file": "packages/marketing/src/subscription/practice-report.default.ts",
+            "lines": "64-80",
+            "hl": [
+              66,
+              78
+            ],
             "rows": [
               [
-                "—",
-                "// PostgresPracticeReportEmailSends.claim — NOT changed by this PR.",
-                0
+                "64",
+                "  private async sendClaimed(msg: PracticeReportGeneratedMessage): Promise<void> {",
+                1
               ],
               [
-                "—",
-                "// INSERT INTO practice_report_email_sends (practice_id, report_type, batch_period)",
-                0
+                "65",
+                "    let sent = false;",
+                1
               ],
               [
-                "—",
-                "//   VALUES ($1, $2, $3) ON CONFLICT (practice_id, report_type, batch_period) DO NOTHING",
-                0
+                "66",
+                "    try {",
+                1
               ],
               [
-                "—",
-                "// Returns true iff a row was inserted (this delivery won the slot).",
-                0
+                "67",
+                "      const result = await sendHubSpotWebhook(buildPayload(msg));",
+                1
+              ],
+              [
+                "68",
+                "      if (result.status === \"failed\") {",
+                1
+              ],
+              [
+                "69",
+                "        throw new Error(",
+                1
+              ],
+              [
+                "70",
+                "          `HubSpot webhook send failed: ${result.reason} (practiceSfAccountId=${msg.practiceSfAccountId} emailType=${msg.emailType} batchPeriod=${msg.batchPeriod})`,",
+                1
+              ],
+              [
+                "71",
+                "        );",
+                1
+              ],
+              [
+                "72",
+                "      }",
+                1
+              ],
+              [
+                "73",
+                "      sent = true;",
+                1
+              ],
+              [
+                "74",
+                "      logger.info(sendContext(msg), \"PracticeReport: HubSpot webhook sent\");",
+                1
+              ],
+              [
+                "75",
+                "    } finally {",
+                1
+              ],
+              [
+                "76",
+                "      if (!sent) {",
+                1
+              ],
+              [
+                "77",
+                "        await this.deps.emailSends.release(msg.practiceSfAccountId, msg.emailType, msg.batchPeriod);",
+                1
+              ],
+              [
+                "78",
+                "      }",
+                1
+              ],
+              [
+                "79",
+                "    }",
+                1
+              ],
+              [
+                "80",
+                "  }",
+                1
               ]
             ]
           }
@@ -440,113 +532,187 @@
     },
     {
       "id": "d6",
-      "title": "Release the slot on send failure so a later flip re-drives cleanly",
+      "title": "Build a pure-passthrough payload of exactly three fields — no S3, no Couchdrop credential",
       "source": "author",
-      "chose": "Track a <code>sent</code> flag; in <code>finally</code>, release the claim if the send did not succeed, then rethrow.",
-      "rejected": "Leave the slot claimed on failure (permanent), or release unconditionally",
-      "why": "A claimed-but-unsent slot would permanently block that report — a HubSpot outage would silently swallow it forever. Releasing only on failure means a retry, or a later flag flip, re-drives cleanly; releasing unconditionally would defeat the idempotency guard on the success path. Rethrowing preserves the consumer's at-least-once retry semantics.",
-      "quote": "a later flip re-drives cleanly since flag-off never claims a slot.",
-      "quoteSrc": "PR description · Risk Mitigations",
+      "chose": "`buildPayload` forwards `couchdrop_shared_link_url`, `practice_email`, and `email_type` straight through, with no enrichment reads.",
+      "rejected": "Have marketing fetch the report from S3 / Couchdrop or enrich the payload with per-practice data.",
+      "why": "Marketing holds no Couchdrop credentials and reads no storage; it simply forwards fields the upstream event already carried. This keeps the blast radius tiny — no new credentials, no storage dependency — and the payload shape is exactly what HubSpot needs (link, recipient, workflow routing).",
+      "quote": "Marketing is a **pure passthrough** — it forwards `couchdrop_shared_link_url` + `practice_email` + `email_type` straight through; it reads no S3, calls no Couchdrop, and holds no Couchdrop credentials.",
+      "quoteSrc": "PR body, Description",
       "evidence": [
         {
-          "kind": "trace",
-          "trace": [
-            {
-              "step": "sendClaimed sets sent=false, POSTs the payload",
-              "note": "the slot is already held at this point"
-            },
-            {
-              "step": "send fails → throw",
-              "note": "sent stays false",
-              "bad": true
-            },
-            {
-              "step": "finally: !sent → release(practice, emailType, batchPeriod)",
-              "note": "the slot is freed for a retry or later flip"
-            },
-            {
-              "step": "error propagates → consumer retry engages",
-              "note": "at-least-once semantics preserved",
-              "bad": true,
-              "terminal": true
-            }
-          ],
-          "tests": [
-            { "name": "releases the claim so the next batch can retry", "file": "packages/marketing/src/subscription/practice-report.default.test.ts" },
-            { "name": "propagates the failure so consumer retry semantics engage", "file": "packages/marketing/src/subscription/practice-report.default.test.ts" }
-          ],
+          "kind": "anchor",
+          "claim": "The composed HubSpot payload is exactly the three forwarded fields, constructed with no storage or credential access.",
           "code": {
             "file": "packages/marketing/src/subscription/practice-report.default.ts",
-            "lines": "54-70",
+            "lines": "82-88",
             "hl": [
-              64,
-              69
+              83,
+              87
             ],
             "context": false,
             "rows": [
               [
-                "54",
-                "  private async sendClaimed(msg: PracticeReportGeneratedMessage): Promise<void> {",
+                "82",
+                "function buildPayload(msg: PracticeReportGeneratedMessage): HubSpotPracticeReportWebhookPayload {",
                 1
               ],
               [
-                "55",
-                "    let sent = false;",
+                "83",
+                "  return {",
                 1
               ],
               [
-                "56",
-                "    try {",
+                "84",
+                "    email_type: msg.emailType,",
                 1
               ],
               [
-                "57",
-                "      const result = await sendHubSpotWebhook(buildPayload(msg));",
+                "85",
+                "    practice_email: msg.practiceEmail,",
                 1
               ],
               [
-                "58",
-                "      if (result.status === \"failed\") {",
+                "86",
+                "    couchdrop_shared_link_url: msg.couchdropSharedLinkUrl,",
                 1
               ],
               [
-                "59",
-                "        throw new Error(",
+                "87",
+                "  };",
                 1
               ],
               [
-                "62",
-                "      sent = true;",
+                "88",
+                "}",
+                1
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "d7",
+      "title": "Adapt the event and rethrow in the Kafka handler; leave the unused `report_type` in the wire schema",
+      "source": "author",
+      "chose": "Unwrap `Public<>` values, adapt to a plain message, delegate to the subscription, and rethrow on error; keep `report_type` in the event schema though the handler claims on `email_type`.",
+      "rejected": "Swallow handler errors, or strip `report_type` from the schema since the handler doesn't use it.",
+      "why": "Rethrowing lets the consumer's at-least-once retry engage instead of silently dropping. `report_type` is the producer's wire contract; removing it would be a schema/contract change and out of scope — a deliberate non-change.",
+      "quote": "`PracticeReportEntity.report_type` is declared but unused by the handler (claims key on `email_type`). It is the producer's wire contract; removing it would be a schema/contract change, out of scope.",
+      "quoteSrc": ".claude/plans/pr-review-NEV-1645.md, Low observations",
+      "note": "the retained schema field is a deliberate non-change",
+      "evidence": [
+        {
+          "kind": "trace",
+          "regression": false,
+          "trace": [
+            {
+              "step": "unwrap Public<> values via Promise.all(...value())",
+              "note": "produces a plain message: reportUuid, practiceSfAccountId, emailType, batchPeriod, couchdropSharedLinkUrl, practiceEmail, templateVersion, occurred."
+            },
+            {
+              "step": "delegate to <span class='kw'>subscription.practiceReportGenerated(msg)</span>",
+              "note": "hands the adapted message to the marketing subscription."
+            },
+            {
+              "step": "on error, log then rethrow",
+              "note": "logs 'failed to handle PracticeReportGeneratedEvent' and re-throws so consumer retry engages.",
+              "bad": false,
+              "terminal": true
+            }
+          ],
+          "code": {
+            "file": "packages/kafka-consumer/src/practice-reports/generated-handler.ts",
+            "lines": "37-53",
+            "hl": [
+              38,
+              52
+            ],
+            "rows": [
+              [
+                "37",
+                "      await this.subscription.practiceReportGenerated({",
                 1
               ],
               [
-                "64",
-                "    } finally {",
+                "38",
+                "        reportUuid,",
                 1
               ],
               [
-                "65",
-                "      if (!sent) {",
+                "39",
+                "        practiceSfAccountId,",
                 1
               ],
               [
-                "66",
-                "        await this.deps.emailSends.release(msg.practiceSfAccountId, msg.emailType, msg.batchPeriod);",
+                "40",
+                "        emailType,",
                 1
               ],
               [
-                "67",
-                "      }",
+                "41",
+                "        batchPeriod,",
                 1
               ],
               [
-                "68",
+                "42",
+                "        couchdropSharedLinkUrl,",
+                1
+              ],
+              [
+                "43",
+                "        practiceEmail,",
+                1
+              ],
+              [
+                "44",
+                "        templateVersion,",
+                1
+              ],
+              [
+                "45",
+                "        occurred: new Date(occurredAt),",
+                1
+              ],
+              [
+                "46",
+                "      });",
+                1
+              ],
+              [
+                "47",
+                "    } catch (error) {",
+                1
+              ],
+              [
+                "48",
+                "      this.logger.error(",
+                1
+              ],
+              [
+                "49",
+                "        { error, eventUuid: event.uuid, traceId: event.trace_id },",
+                1
+              ],
+              [
+                "50",
+                "        \"failed to handle PracticeReportGeneratedEvent\",",
+                1
+              ],
+              [
+                "51",
+                "      );",
+                1
+              ],
+              [
+                "52",
+                "      throw error;",
+                1
+              ],
+              [
+                "53",
                 "    }",
-                1
-              ],
-              [
-                "69",
-                "  }",
                 1
               ]
             ]
@@ -558,93 +724,99 @@
   "coverage": {
     "explained": [
       {
+        "file": "packages/marketing/src/features/general-features.ld.ts",
+        "byDecisions": [
+          "d1"
+        ]
+      },
+      {
+        "file": "packages/marketing/src/comms/hubspot-webhook-client.ts",
+        "byDecisions": [
+          "d2"
+        ]
+      },
+      {
         "file": "packages/marketing/src/subscription/practice-report.default.ts",
         "byDecisions": [
-          "d1",
+          "d3",
           "d4",
           "d5",
           "d6"
         ]
       },
       {
-        "file": "packages/marketing/src/features/general-features.ld.ts",
+        "file": "packages/kafka-consumer/src/practice-reports/generated-handler.ts",
         "byDecisions": [
-          "d2"
-        ]
-      },
-      {
-        "file": "packages/marketing/src/comms/hubspot-webhook-client.ts",
-        "byDecisions": [
-          "d3"
+          "d7"
         ]
       }
     ],
     "mechanical": [
       {
-        "file": "packages/kafka-consumer/src/consumer.ts",
-        "why": "registers the practice-reports handler — wiring"
+        "file": "packages/marketing/src/features/general-features.ts",
+        "why": "interface member declaration for the flag method"
       },
       {
-        "file": "packages/kafka-consumer/src/index.ts",
-        "why": "constructs deps + passes subscription to the consumer"
-      },
-      {
-        "file": "packages/kafka-consumer/src/practice-reports/index.ts",
-        "why": "handler registration for the topic"
-      },
-      {
-        "file": "packages/kafka-consumer/src/practice-reports/generated-handler.ts",
-        "why": "byte-for-byte copy of the partner-referral event handler — unwrap Public<> + rethrow"
-      },
-      {
-        "file": "packages/kafka-consumer/src/practice-reports/event-schemas.ts",
-        "why": "producer's wire contract for the event"
-      },
-      {
-        "file": "packages/marketing/src/index.ts",
-        "why": "barrel exports of the subscription, deps, repository, and types"
-      },
-      {
-        "file": "packages/marketing/src/setup.ts",
-        "why": "createPracticeReportSubscription factory wiring"
+        "file": "packages/marketing/src/features/general-features.null.ts",
+        "why": "null-impl returning false — completes the IGeneralFeatures triple"
       },
       {
         "file": "packages/marketing/src/subscription/practice-report.ts",
         "why": "interface + message type declarations"
       },
       {
-        "file": "packages/marketing/src/features/general-features.ts",
-        "why": "adds the method to the IGeneralFeatures interface"
+        "file": "packages/marketing/src/setup.ts",
+        "why": "createPracticeReportSubscription factory wiring"
       },
       {
-        "file": "packages/marketing/src/features/general-features.null.ts",
-        "why": "null impl returns false — the triple's fail-closed member"
+        "file": "packages/marketing/src/index.ts",
+        "why": "barrel exports of subscription/repo types"
+      },
+      {
+        "file": "packages/kafka-consumer/src/practice-reports/event-schemas.ts",
+        "why": "wire schema/topic/schema-id declarations"
+      },
+      {
+        "file": "packages/kafka-consumer/src/practice-reports/index.ts",
+        "why": "registerHandlers wiring for the topic"
+      },
+      {
+        "file": "packages/kafka-consumer/src/consumer.ts",
+        "why": "handler registration — DI wiring"
+      },
+      {
+        "file": "packages/kafka-consumer/src/index.ts",
+        "why": "deps construction + consumer wiring"
+      },
+      {
+        "file": ".claude/plans/pr-review-NEV-1645.md",
+        "why": "review plan doc — not shipped code"
       }
     ],
     "tests": [
       {
-        "file": "packages/marketing/src/subscription/practice-report.default.test.ts",
-        "covers": "gate / claim / redelivery-refusal / failure-release / flag-off-no-claim / no-S3"
+        "file": "packages/marketing/src/features/general-features.test.ts",
+        "covers": "flag context / no-PHI / fail-closed / null-impl"
       },
       {
         "file": "packages/marketing/src/comms/hubspot-webhook-client.test.ts",
         "covers": "practice-report payload shape + email_type passthrough"
       },
       {
-        "file": "packages/marketing/src/features/general-features.test.ts",
-        "covers": "flag context / no-PHI / fail-closed / null impl"
+        "file": "packages/marketing/src/subscription/practice-report.default.test.ts",
+        "covers": "gate / claim / redelivery-refusal / failure-release / flag-off-no-claim / no-S3"
       },
       {
         "file": "packages/kafka-consumer/src/practice-reports/generated-handler.test.ts",
-        "covers": "event adaptation + rethrow on subscription error"
+        "covers": "event adaptation + rethrow"
       },
       {
         "file": "packages/marketing/src/subscription/appointments.default.test.ts",
-        "covers": "adds shouldSendPracticeReportEmail to the IGeneralFeatures mock"
+        "covers": "mock IGeneralFeatures updated with new flag method"
       },
       {
         "file": "packages/marketing/src/subscription/patient-crm.default.test.ts",
-        "covers": "adds shouldSendPracticeReportEmail to the IGeneralFeatures mock"
+        "covers": "mock IGeneralFeatures updated with new flag method"
       }
     ],
     "unexplained": []
@@ -652,7 +824,7 @@
   "diff": [
     {
       "file": ".claude/plans/pr-review-NEV-1645.md",
-      "bucket": null,
+      "bucket": "mechanical",
       "byDecisions": [],
       "hunks": [
         {
@@ -2121,8 +2293,10 @@
     },
     {
       "file": "packages/kafka-consumer/src/practice-reports/generated-handler.ts",
-      "bucket": "mechanical",
-      "byDecisions": [],
+      "bucket": "explained",
+      "byDecisions": [
+        "d7"
+      ],
       "hunks": [
         {
           "header": "@@ -0,0 +1,55 @@",
@@ -2384,119 +2558,119 @@
               "new": 37,
               "sign": "+",
               "text": "      await this.subscription.practiceReportGenerated({",
-              "decision": null
+              "decision": "d7"
             },
             {
               "old": null,
               "new": 38,
               "sign": "+",
               "text": "        reportUuid,",
-              "decision": null
+              "decision": "d7"
             },
             {
               "old": null,
               "new": 39,
               "sign": "+",
               "text": "        practiceSfAccountId,",
-              "decision": null
+              "decision": "d7"
             },
             {
               "old": null,
               "new": 40,
               "sign": "+",
               "text": "        emailType,",
-              "decision": null
+              "decision": "d7"
             },
             {
               "old": null,
               "new": 41,
               "sign": "+",
               "text": "        batchPeriod,",
-              "decision": null
+              "decision": "d7"
             },
             {
               "old": null,
               "new": 42,
               "sign": "+",
               "text": "        couchdropSharedLinkUrl,",
-              "decision": null
+              "decision": "d7"
             },
             {
               "old": null,
               "new": 43,
               "sign": "+",
               "text": "        practiceEmail,",
-              "decision": null
+              "decision": "d7"
             },
             {
               "old": null,
               "new": 44,
               "sign": "+",
               "text": "        templateVersion,",
-              "decision": null
+              "decision": "d7"
             },
             {
               "old": null,
               "new": 45,
               "sign": "+",
               "text": "        occurred: new Date(occurredAt),",
-              "decision": null
+              "decision": "d7"
             },
             {
               "old": null,
               "new": 46,
               "sign": "+",
               "text": "      });",
-              "decision": null
+              "decision": "d7"
             },
             {
               "old": null,
               "new": 47,
               "sign": "+",
               "text": "    } catch (error) {",
-              "decision": null
+              "decision": "d7"
             },
             {
               "old": null,
               "new": 48,
               "sign": "+",
               "text": "      this.logger.error(",
-              "decision": null
+              "decision": "d7"
             },
             {
               "old": null,
               "new": 49,
               "sign": "+",
               "text": "        { error, eventUuid: event.uuid, traceId: event.trace_id },",
-              "decision": null
+              "decision": "d7"
             },
             {
               "old": null,
               "new": 50,
               "sign": "+",
               "text": "        \"failed to handle PracticeReportGeneratedEvent\",",
-              "decision": null
+              "decision": "d7"
             },
             {
               "old": null,
               "new": 51,
               "sign": "+",
               "text": "      );",
-              "decision": null
+              "decision": "d7"
             },
             {
               "old": null,
               "new": 52,
               "sign": "+",
               "text": "      throw error;",
-              "decision": null
+              "decision": "d7"
             },
             {
               "old": null,
               "new": 53,
               "sign": "+",
               "text": "    }",
-              "decision": null
+              "decision": "d7"
             },
             {
               "old": null,
@@ -3039,7 +3213,7 @@
       "file": "packages/marketing/src/comms/hubspot-webhook-client.ts",
       "bucket": "explained",
       "byDecisions": [
-        "d3"
+        "d2"
       ],
       "hunks": [
         {
@@ -3111,112 +3285,112 @@
               "new": 27,
               "sign": "+",
               "text": "/**",
-              "decision": null
+              "decision": "d2"
             },
             {
               "old": null,
               "new": 28,
               "sign": "+",
               "text": " * Practice-report send payload. Deliberately not a member of HubSpotWebhookPayload:",
-              "decision": null
+              "decision": "d2"
             },
             {
               "old": null,
               "new": 29,
               "sign": "+",
               "text": " * that union is closed over the partner-referral EmailType, and widening it breaks",
-              "decision": null
+              "decision": "d2"
             },
             {
               "old": null,
               "new": 30,
               "sign": "+",
               "text": " * narrowing in buildPartnerReferralWebhookPayload. Carries no per-patient enrichment",
-              "decision": null
+              "decision": "d2"
             },
             {
               "old": null,
               "new": 31,
               "sign": "+",
               "text": " * fields — HubSpot reads practice_email directly for the To: field, and email_type",
-              "decision": null
+              "decision": "d2"
             },
             {
               "old": null,
               "new": 32,
               "sign": "+",
               "text": " * routes to the correct workflow arm.",
-              "decision": null
+              "decision": "d2"
             },
             {
               "old": null,
               "new": 33,
               "sign": "+",
               "text": " */",
-              "decision": "d3"
+              "decision": "d2"
             },
             {
               "old": null,
               "new": 34,
               "sign": "+",
               "text": "export type HubSpotPracticeReportWebhookPayload = {",
-              "decision": "d3"
+              "decision": "d2"
             },
             {
               "old": null,
               "new": 35,
               "sign": "+",
               "text": "  email_type: PracticeReportType;",
-              "decision": "d3"
+              "decision": "d2"
             },
             {
               "old": null,
               "new": 36,
               "sign": "+",
               "text": "  practice_email: string;",
-              "decision": "d3"
+              "decision": "d2"
             },
             {
               "old": null,
               "new": 37,
               "sign": "+",
               "text": "  couchdrop_shared_link_url: string;",
-              "decision": "d3"
+              "decision": "d2"
             },
             {
               "old": null,
               "new": 38,
               "sign": "+",
               "text": "};",
-              "decision": "d3"
+              "decision": "d2"
             },
             {
               "old": null,
               "new": 39,
               "sign": "+",
               "text": "",
-              "decision": "d3"
+              "decision": "d2"
             },
             {
               "old": 26,
               "new": 40,
               "sign": " ",
               "text": "export type HubSpotWebhookResult = { status: \"sent\" } | { status: \"failed\"; reason: string };",
-              "decision": "d3"
+              "decision": "d2"
             },
             {
               "old": 27,
               "new": 41,
               "sign": " ",
               "text": "",
-              "decision": "d3"
+              "decision": "d2"
             },
             {
               "old": 28,
               "new": 42,
               "sign": " ",
               "text": "export async function sendHubSpotWebhook(",
-              "decision": "d3"
+              "decision": "d2"
             },
             {
               "old": 29,
@@ -3230,21 +3404,21 @@
               "new": 43,
               "sign": "+",
               "text": "  payload: HubSpotWebhookPayload | HubSpotPracticeReportWebhookPayload,",
-              "decision": "d3"
+              "decision": "d2"
             },
             {
               "old": 30,
               "new": 44,
               "sign": " ",
               "text": "): Promise<HubSpotWebhookResult> {",
-              "decision": "d3"
+              "decision": "d2"
             },
             {
               "old": 31,
               "new": 45,
               "sign": " ",
               "text": "  const url = process.env.HUBSPOT_WEBHOOK_URL;",
-              "decision": "d3"
+              "decision": "d2"
             },
             {
               "old": 32,
@@ -3261,7 +3435,7 @@
       "file": "packages/marketing/src/features/general-features.ld.ts",
       "bucket": "explained",
       "byDecisions": [
-        "d2"
+        "d1"
       ],
       "hunks": [
         {
@@ -3321,91 +3495,91 @@
               "new": 41,
               "sign": "+",
               "text": "   * @returns Promise<boolean>, defaulting to false",
-              "decision": "d2"
+              "decision": null
             },
             {
               "old": null,
               "new": 42,
               "sign": "+",
               "text": "   */",
-              "decision": "d2"
+              "decision": null
             },
             {
               "old": null,
               "new": 43,
               "sign": "+",
               "text": "  async shouldSendPracticeReportEmail(practiceSfAccountId: string): Promise<boolean> {",
-              "decision": "d2"
+              "decision": "d1"
             },
             {
               "old": null,
               "new": 44,
               "sign": "+",
               "text": "    return await variation({",
-              "decision": "d2"
+              "decision": "d1"
             },
             {
               "old": null,
               "new": 45,
               "sign": "+",
               "text": "      key: \"marketing-practice-report-send-enabled\",",
-              "decision": "d2"
+              "decision": "d1"
             },
             {
               "old": null,
               "new": 46,
               "sign": "+",
               "text": "      context: {",
-              "decision": "d2"
+              "decision": "d1"
             },
             {
               "old": null,
               "new": 47,
               "sign": "+",
               "text": "        kind: \"practice\",",
-              "decision": "d2"
+              "decision": "d1"
             },
             {
               "old": null,
               "new": 48,
               "sign": "+",
               "text": "        key: practiceSfAccountId,",
-              "decision": "d2"
+              "decision": "d1"
             },
             {
               "old": null,
               "new": 49,
               "sign": "+",
               "text": "      },",
-              "decision": "d2"
+              "decision": "d1"
             },
             {
               "old": null,
               "new": 50,
               "sign": "+",
               "text": "      fallback: false,",
-              "decision": null
+              "decision": "d1"
             },
             {
               "old": null,
               "new": 51,
               "sign": "+",
               "text": "    });",
-              "decision": null
+              "decision": "d1"
             },
             {
               "old": null,
               "new": 52,
               "sign": "+",
               "text": "  }",
-              "decision": null
+              "decision": "d1"
             },
             {
               "old": 37,
               "new": 53,
               "sign": " ",
               "text": "}",
-              "decision": null
+              "decision": "d1"
             }
           ]
         }
@@ -6027,7 +6201,7 @@
       "file": "packages/marketing/src/subscription/practice-report.default.ts",
       "bucket": "explained",
       "byDecisions": [
-        "d1",
+        "d3",
         "d4",
         "d5",
         "d6"
@@ -6174,77 +6348,77 @@
               "new": 20,
               "sign": "+",
               "text": "",
-              "decision": null
+              "decision": "d3"
             },
             {
               "old": null,
               "new": 21,
               "sign": "+",
               "text": "  async practiceReportGenerated(msg: PracticeReportGeneratedMessage): Promise<void> {",
-              "decision": "d4"
+              "decision": "d3"
             },
             {
               "old": null,
               "new": 22,
               "sign": "+",
               "text": "    if (!(await this.isSendEnabled(msg))) {",
-              "decision": "d4"
+              "decision": "d3"
             },
             {
               "old": null,
               "new": 23,
               "sign": "+",
               "text": "      return;",
-              "decision": "d4"
+              "decision": "d3"
             },
             {
               "old": null,
               "new": 24,
               "sign": "+",
               "text": "    }",
-              "decision": "d4"
+              "decision": "d3"
             },
             {
               "old": null,
               "new": 25,
               "sign": "+",
               "text": "    if (!(await this.claimSlot(msg))) {",
-              "decision": "d4"
+              "decision": "d3"
             },
             {
               "old": null,
               "new": 26,
               "sign": "+",
               "text": "      return;",
-              "decision": "d4"
+              "decision": "d3"
             },
             {
               "old": null,
               "new": 27,
               "sign": "+",
               "text": "    }",
-              "decision": "d4"
+              "decision": "d3"
             },
             {
               "old": null,
               "new": 28,
               "sign": "+",
               "text": "    await this.sendClaimed(msg);",
-              "decision": "d4"
+              "decision": "d3"
             },
             {
               "old": null,
               "new": 29,
               "sign": "+",
               "text": "  }",
-              "decision": "d4"
+              "decision": null
             },
             {
               "old": null,
               "new": 30,
               "sign": "+",
               "text": "",
-              "decision": "d4"
+              "decision": null
             },
             {
               "old": null,
@@ -6328,77 +6502,77 @@
               "new": 42,
               "sign": "+",
               "text": "  private async claimSlot(msg: PracticeReportGeneratedMessage): Promise<boolean> {",
-              "decision": "d5"
+              "decision": "d4"
             },
             {
               "old": null,
               "new": 43,
               "sign": "+",
               "text": "    const claimed = await this.deps.emailSends.claim(",
-              "decision": "d5"
+              "decision": "d4"
             },
             {
               "old": null,
               "new": 44,
               "sign": "+",
               "text": "      msg.practiceSfAccountId,",
-              "decision": "d5"
+              "decision": "d4"
             },
             {
               "old": null,
               "new": 45,
               "sign": "+",
               "text": "      msg.emailType,",
-              "decision": "d5"
+              "decision": "d4"
             },
             {
               "old": null,
               "new": 46,
               "sign": "+",
               "text": "      msg.batchPeriod,",
-              "decision": "d5"
+              "decision": "d4"
             },
             {
               "old": null,
               "new": 47,
               "sign": "+",
               "text": "    );",
-              "decision": "d5"
+              "decision": "d4"
             },
             {
               "old": null,
               "new": 48,
               "sign": "+",
               "text": "    if (!claimed) {",
-              "decision": "d5"
+              "decision": "d4"
             },
             {
               "old": null,
               "new": 49,
               "sign": "+",
               "text": "      logger.info(sendContext(msg), \"PracticeReport: already sent, skipping\");",
-              "decision": "d5"
+              "decision": "d4"
             },
             {
               "old": null,
               "new": 50,
               "sign": "+",
               "text": "    }",
-              "decision": "d5"
+              "decision": "d4"
             },
             {
               "old": null,
               "new": 51,
               "sign": "+",
               "text": "    return claimed;",
-              "decision": "d5"
+              "decision": "d4"
             },
             {
               "old": null,
               "new": 52,
               "sign": "+",
               "text": "  }",
-              "decision": "d5"
+              "decision": "d4"
             },
             {
               "old": null,
@@ -6412,189 +6586,189 @@
               "new": 54,
               "sign": "+",
               "text": "  private async sendClaimed(msg: PracticeReportGeneratedMessage): Promise<void> {",
-              "decision": "d6"
+              "decision": null
             },
             {
               "old": null,
               "new": 55,
               "sign": "+",
               "text": "    let sent = false;",
-              "decision": "d6"
+              "decision": null
             },
             {
               "old": null,
               "new": 56,
               "sign": "+",
               "text": "    try {",
-              "decision": "d6"
+              "decision": null
             },
             {
               "old": null,
               "new": 57,
               "sign": "+",
               "text": "      const result = await sendHubSpotWebhook(buildPayload(msg));",
-              "decision": "d6"
+              "decision": null
             },
             {
               "old": null,
               "new": 58,
               "sign": "+",
               "text": "      if (result.status === \"failed\") {",
-              "decision": "d6"
+              "decision": null
             },
             {
               "old": null,
               "new": 59,
               "sign": "+",
               "text": "        throw new Error(",
-              "decision": "d6"
+              "decision": null
             },
             {
               "old": null,
               "new": 60,
               "sign": "+",
               "text": "          `HubSpot webhook send failed: ${result.reason} (practiceSfAccountId=${msg.practiceSfAccountId} emailType=${msg.emailType} batchPeriod=${msg.batchPeriod})`,",
-              "decision": "d6"
+              "decision": null
             },
             {
               "old": null,
               "new": 61,
               "sign": "+",
               "text": "        );",
-              "decision": "d6"
+              "decision": null
             },
             {
               "old": null,
               "new": 62,
               "sign": "+",
               "text": "      }",
-              "decision": "d6"
+              "decision": null
             },
             {
               "old": null,
               "new": 63,
               "sign": "+",
               "text": "      sent = true;",
-              "decision": "d6"
+              "decision": null
             },
             {
               "old": null,
               "new": 64,
               "sign": "+",
               "text": "      logger.info(sendContext(msg), \"PracticeReport: HubSpot webhook sent\");",
-              "decision": "d6"
+              "decision": "d5"
             },
             {
               "old": null,
               "new": 65,
               "sign": "+",
               "text": "    } finally {",
-              "decision": "d6"
+              "decision": "d5"
             },
             {
               "old": null,
               "new": 66,
               "sign": "+",
               "text": "      if (!sent) {",
-              "decision": "d6"
+              "decision": "d5"
             },
             {
               "old": null,
               "new": 67,
               "sign": "+",
               "text": "        await this.deps.emailSends.release(msg.practiceSfAccountId, msg.emailType, msg.batchPeriod);",
-              "decision": "d6"
+              "decision": "d5"
             },
             {
               "old": null,
               "new": 68,
               "sign": "+",
               "text": "      }",
-              "decision": "d6"
+              "decision": "d5"
             },
             {
               "old": null,
               "new": 69,
               "sign": "+",
               "text": "    }",
-              "decision": "d6"
+              "decision": "d5"
             },
             {
               "old": null,
               "new": 70,
               "sign": "+",
               "text": "  }",
-              "decision": "d6"
+              "decision": "d5"
             },
             {
               "old": null,
               "new": 71,
               "sign": "+",
               "text": "}",
-              "decision": null
+              "decision": "d5"
             },
             {
               "old": null,
               "new": 72,
               "sign": "+",
               "text": "",
-              "decision": "d1"
+              "decision": "d5"
             },
             {
               "old": null,
               "new": 73,
               "sign": "+",
               "text": "function buildPayload(msg: PracticeReportGeneratedMessage): HubSpotPracticeReportWebhookPayload {",
-              "decision": "d1"
+              "decision": "d5"
             },
             {
               "old": null,
               "new": 74,
               "sign": "+",
               "text": "  return {",
-              "decision": "d1"
+              "decision": "d5"
             },
             {
               "old": null,
               "new": 75,
               "sign": "+",
               "text": "    email_type: msg.emailType,",
-              "decision": "d1"
+              "decision": "d5"
             },
             {
               "old": null,
               "new": 76,
               "sign": "+",
               "text": "    practice_email: msg.practiceEmail,",
-              "decision": "d1"
+              "decision": "d5"
             },
             {
               "old": null,
               "new": 77,
               "sign": "+",
               "text": "    couchdrop_shared_link_url: msg.couchdropSharedLinkUrl,",
-              "decision": "d1"
+              "decision": "d5"
             },
             {
               "old": null,
               "new": 78,
               "sign": "+",
               "text": "  };",
-              "decision": "d1"
+              "decision": "d5"
             },
             {
               "old": null,
               "new": 79,
               "sign": "+",
               "text": "}",
-              "decision": null
+              "decision": "d5"
             },
             {
               "old": null,
               "new": 80,
               "sign": "+",
               "text": "",
-              "decision": null
+              "decision": "d5"
             },
             {
               "old": null,
@@ -6608,49 +6782,49 @@
               "new": 82,
               "sign": "+",
               "text": "  return {",
-              "decision": null
+              "decision": "d6"
             },
             {
               "old": null,
               "new": 83,
               "sign": "+",
               "text": "    reportUuid: msg.reportUuid,",
-              "decision": null
+              "decision": "d6"
             },
             {
               "old": null,
               "new": 84,
               "sign": "+",
               "text": "    practiceSfAccountId: msg.practiceSfAccountId,",
-              "decision": null
+              "decision": "d6"
             },
             {
               "old": null,
               "new": 85,
               "sign": "+",
               "text": "    emailType: msg.emailType,",
-              "decision": null
+              "decision": "d6"
             },
             {
               "old": null,
               "new": 86,
               "sign": "+",
               "text": "    batchPeriod: msg.batchPeriod,",
-              "decision": null
+              "decision": "d6"
             },
             {
               "old": null,
               "new": 87,
               "sign": "+",
               "text": "  };",
-              "decision": null
+              "decision": "d6"
             },
             {
               "old": null,
               "new": 88,
               "sign": "+",
               "text": "}",
-              "decision": null
+              "decision": "d6"
             }
           ]
         }
