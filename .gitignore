@@ -1,0 +1,4 @@
+# Generated walkthroughs are build artifacts, never source. They are produced by
+# generate.js from prototype/data/*.json and regenerated with `./build.sh`.
+# Committing them invites hand-edits that the next render silently destroys.
+prototype/*.html

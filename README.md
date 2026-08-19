@@ -10,7 +10,7 @@ quality, or suggest improvements.
 
 ## Requirements
 
-- `node` (no npm dependencies; the pipeline uses only `fs`/`path`)
+- `node` (no `npm install`; the only dependency, EJS, is committed at `generator/vendor/ejs.js`)
 - `gh` authenticated against the target repo (for `proof.sh`)
 - `jq` (for `proof.sh`)
 - `claude` CLI with AWS Bedrock access (for live generation; not needed with `--data`)
@@ -127,15 +127,18 @@ on the chosen model; see `.plans/ci-run-for-pr.md`.
 
 ```
 proof.sh                       pipeline runner (gather → generate → ingest → validate → render)
-generate.js                    renders walkthrough data → self-contained HTML
+build.sh                       regenerate the sample walkthroughs from prototype/data
+generate.js                    loads templates + assets, renders data → self-contained HTML
 validate.js                    enforces provenance, evidence, and coverage rules
 generator/
-  ingest-diff.js               attributes each diff line to a decision
+  templates/*.ejs              page shell + card/coverage/behaviour/diff markup
+  client.js                    client-side behaviour (tabs, drawer, sort), inlined
   style.css                    stylesheet, inlined at generate time
+  ingest-diff.js               attributes each diff line to a decision
+  vendor/ejs.js                vendored EJS engine (committed; no npm install)
 prototype/
-  index.html                   sample walkthrough (open directly)
-  pr-1227.html                 real-PR walkthrough
-  data/*.json                  walkthrough data
+  *.html                       generated walkthroughs — gitignored, run ./build.sh
+  data/*.json                  walkthrough data (source of truth)
 .github/
   workflows/proof.yml          CI job
   upsert-comment.sh            marker-based PR comment upsert

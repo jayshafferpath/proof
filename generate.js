@@ -8,10 +8,18 @@
  */
 const fs = require("fs");
 const path = require("path");
+const ejs = require("./generator/vendor/ejs.js");
 
-// Set once per render() so the deep renderers can build citation links without
-// threading `pr` through every call.
+// Set once per render() so the deep renderers can build citation links, and
+// reach the loaded templates, without threading them through every call.
 let PR = {};
+let TEMPLATES = {};
+
+// Emit BUCKET_RANK as the exact object literal the client script used before it
+// was single-sourced — `{ explained: 0, ... }`, not JSON's quoted-key form — so
+// the injected client JS stays byte-identical.
+const bucketRankLiteral = () =>
+  `{ ${Object.entries(BUCKET_RANK).map(([k, v]) => `${k}: ${v}`).join(", ")} }`;
 
 // A GitHub permalink for a code anchor. Pins to a commit SHA (never a branch —
 // a branch ref rots and the line numbers drift). context:true anchors point at
@@ -137,6 +145,11 @@ function renderFragment(frag) {
   return `<div class="frag">${body}</div>`;
 }
 
+const sourceChip = (d) =>
+  d.source === "author"
+    ? `<span class="schip author">✎ author-stated</span>`
+    : `<span class="schip infer">⚙ AI-inferred</span>`;
+
 function renderProvenance(d) {
   if (d.source === "author") {
     return `<div class="qbox">“${richText(d.quote)}”<span class="qs">— ${esc(d.quoteSrc)}</span></div>`;
@@ -146,25 +159,22 @@ function renderProvenance(d) {
 
 function renderDecision(d, i, opts) {
   const withId = !(opts && opts.noId);
-  const chip =
-    d.source === "author"
-      ? `<span class="schip author">✎ author-stated</span>`
-      : `<span class="schip infer">⚙ AI-inferred</span>`;
+  // The diff drawer is a quick-reference beside the code, not a full card: drop the
+  // number badge, verbatim quote, note, and evidence list — those live in Decisions.
+  const compact = !!(opts && opts.compact);
+  const head = (compact ? "" : `<span class="dnum">${i + 1}</span>`) + sourceChip(d);
+  const idAttr = withId ? ` id="${esc(d.id)}"` : "";
+  const rejected = d.rejected
+    ? `<div class="contrast"><span class="ck">instead of</span><span class="cv"><span class="strike">${richText(d.rejected)}</span></span></div>`
+    : "";
   const note = d.note ? `<div class="nbox">${esc(d.note)}</div>` : "";
   const evidence = (d.evidence || []).length
     ? `<div class="evidence"><div class="ev-lbl">Behaviour it shapes</div>${(d.evidence || [])
         .map(renderFragment)
         .join("")}</div>`
     : "";
-  return `<section class="dcard"${withId ? ` id="${esc(d.id)}"` : ""}>
-      <div class="dcard-head"><span class="dnum">${i + 1}</span>${chip}</div>
-      <h2 class="dd-title">${esc(d.title)}</h2>
-      <p class="dd-chose">${richText(d.chose)}</p>
-      ${d.rejected ? `<div class="contrast"><span class="ck">instead of</span><span class="cv"><span class="strike">${richText(d.rejected)}</span></span></div>` : ""}
-      <div class="lbl">Why it matters</div><p class="why">${richText(d.why)}</p>
-      ${renderProvenance(d)}${note}
-      ${evidence}
-    </section>`;
+  const tail = compact ? "" : `${renderProvenance(d)}${note}${evidence}`;
+  return ejs.render(TEMPLATES.decisionCard, { d, compact, idAttr, head, rejected, tail, esc, richText });
 }
 
 function renderCoverage(cov, decisions) {
@@ -194,14 +204,13 @@ function renderCoverage(cov, decisions) {
     (cov.tests || []).length +
     (cov.unexplained || []).length;
 
-  return `<section class="coverage">
-    <h2 class="cov-title">Change coverage · ${total} files</h2>
-    <p class="cov-sub">How each changed file is accounted for. The spine above explains behaviour; this maps the rest of the surface so nothing is silently omitted.</p>
-    ${group("explained", "Explained by a decision", explained)}
-    ${group("tests", "Tests", withWhy(cov.tests, "covers"))}
-    ${group("mechanical", "Mechanical / wiring", withWhy(cov.mechanical, "why"))}
-    ${group("unexplained", "Not yet explained", withWhy(cov.unexplained, "why"))}
-  </section>`;
+  return ejs.render(TEMPLATES.coverage, {
+    total,
+    groupExplained: group("explained", "Explained by a decision", explained),
+    groupTests: group("tests", "Tests", withWhy(cov.tests, "covers")),
+    groupMechanical: group("mechanical", "Mechanical / wiring", withWhy(cov.mechanical, "why")),
+    groupUnexplained: group("unexplained", "Not yet explained", withWhy(cov.unexplained, "why")),
+  });
 }
 
 // ---- Decisions tab (master/detail) ----
@@ -245,8 +254,7 @@ function renderDiffLine(ln) {
 
 function renderDiffFile(f, coverage) {
   const bucket = f.bucket || "unexplained";
-  const isCode = bucket === "explained";
-  const collapsed = !isCode ? " collapsed" : "";
+  const collapsed = bucket !== "explained" ? " collapsed" : "";
   // summary text for non-explained files pulled from the coverage map
   let summary = "";
   if (coverage && bucket !== "explained") {
@@ -254,6 +262,7 @@ function renderDiffFile(f, coverage) {
     const rec = (coverage[bucket] || []).find((e) => e.file === f.file);
     if (rec) summary = rec[key] || "";
   }
+  const summaryHtml = summary ? `<span class="fsummary">${esc(summary)}</span>` : "";
   const body = f.hunks
     .map(
       (h) =>
@@ -262,21 +271,30 @@ function renderDiffFile(f, coverage) {
           .join("")}</pre>`,
     )
     .join("");
-  return `<div class="diff-file${collapsed}" data-file="${esc(f.file)}">
-    <div class="diff-fhead"><span class="chev">▶</span><span class="bchip ${bucket}">${bucket}</span><span class="fp">${esc(f.file)}</span>${summary ? `<span class="fsummary">${esc(summary)}</span>` : ""}</div>
-    <div class="diff-body">${body}</div>
-  </div>`;
+  return ejs.render(TEMPLATES.diffFile, { f, bucket, collapsed, summaryHtml, body, esc });
 }
 
-function renderDiffTab(diff, decisions, coverage) {
+// Change-type ordering: explained code first (the substance), then tests, wiring,
+// and anything unaccounted for. Files render in this order by default; the "File
+// path" sort button re-sorts alphabetically client-side.
+const BUCKET_RANK = { explained: 0, tests: 1, mechanical: 2, unexplained: 3 };
+
+function renderDiffTab(diff, decisions, coverage, active) {
   if (!diff || !diff.length) return "";
-  const files = diff.map((f) => renderDiffFile(f, coverage)).join("\n");
+  const byType = diff.slice().sort((a, b) => {
+    const ra = BUCKET_RANK[a.bucket] ?? 9;
+    const rb = BUCKET_RANK[b.bucket] ?? 9;
+    return ra - rb || a.file.localeCompare(b.file);
+  });
+  const files = byType.map((f) => renderDiffFile(f, coverage)).join("\n");
   // reasoning drawer holds one hidden card per decision; JS reveals the clicked one
   const cards = decisions
-    .map((d, i) => `<div class="why-card" data-decision="${esc(d.id)}" hidden>${renderDecision(d, i, { noId: true })}</div>`)
+    .map((d, i) => `<div class="why-card" data-decision="${esc(d.id)}" hidden>${renderDecision(d, i, { noId: true, compact: true })}</div>`)
     .join("\n");
-  return `<div class="tabview diff" id="view-diff">
-    <section class="diff-files">${files}</section>
+  return `<div class="tabview diff${active ? " on" : ""}" id="view-diff">
+    <section class="diff-files">
+      <div class="diff-sort"><span class="diff-sort-lbl">Sort</span><button class="diff-sort-btn on" data-sort="type">Change type</button><button class="diff-sort-btn" data-sort="path">File path</button></div>
+      ${files}</section>
     <aside class="diff-why" id="diff-why">
       <div class="diff-why-hint">Reasoning</div>
       <div class="diff-why-empty" id="diff-why-empty">Click a highlighted line to see the decision behind it.</div>
@@ -319,10 +337,7 @@ function renderStateCell(steps, side, split) {
 // Compact reasoning for the inline strip — chose / instead-of / why / provenance,
 // without the full decision-card chrome.
 function renderReasoningInline(d) {
-  const chip =
-    d.source === "author"
-      ? `<span class="schip author">✎ author-stated</span>`
-      : `<span class="schip infer">⚙ AI-inferred</span>`;
+  const chip = sourceChip(d);
   const prov =
     d.source === "author"
       ? `<div class="qbox">“${richText(d.quote)}”<span class="qs">— ${esc(d.quoteSrc)}</span></div>`
@@ -385,16 +400,16 @@ function renderBehaviourRow(row) {
     testCell = `<td class="bm-cell tests empty"><span class="bm-empty">—</span></td>`;
   }
 
-  return `<tr class="bm-row k-${kind}" data-decision="${esc(decision.id)}">
-    <td class="bm-scenario">
-      <span class="bm-kind k-${kind}">${KIND_LABEL[kind]}</span>
-      <span class="bm-title">${esc(scenarioTitle)}</span>
-      ${forkNote}
-      <button class="bm-why" data-decision="${esc(decision.id)}" aria-expanded="false">why<span class="bm-why-chev">▶</span></button>
-    </td>
-    ${beforeCell}${afterCell}${testCell}
-  </tr>
-  <tr class="bm-reason" data-decision="${esc(decision.id)}" hidden><td colspan="4">${renderReasoningInline(decision)}</td></tr>`;
+  return ejs.render(TEMPLATES.behaviourRow, {
+    kind,
+    decisionId: esc(decision.id),
+    kindLabel: KIND_LABEL[kind],
+    scenarioTitle,
+    forkNote,
+    cells: `${beforeCell}${afterCell}${testCell}`,
+    reasoning: renderReasoningInline(decision),
+    esc,
+  });
 }
 
 function renderBehaviourTab(decisions, active) {
@@ -418,115 +433,58 @@ function renderBehaviourTab(decisions, active) {
   </div>`;
 }
 
-function render(data, css) {
+function render(data, assets) {
   const { pr = {}, decisions = [], coverage, diff } = data;
   PR = pr;
+  TEMPLATES = assets.templates;
   const hasDiff = Array.isArray(diff) && diff.length > 0;
   const changedFiles = hasDiff ? diff.length : 0;
   const behaviourRows = behaviourScenarios(decisions);
   const hasBehaviour = behaviourRows.length > 0;
-  // Behaviour-first is the settled design (docs/design.md): the reviewer's first
-  // screen should be something checkable against code. Fall back to Decisions
-  // when a PR has no behaviour scenarios (pure framing/scope changes).
-  const defaultTab = hasBehaviour ? "behaviour" : "decisions";
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PR #${esc(pr.number)} — walkthrough</title>
-<style>
-${css}
-</style>
-</head>
-<body>
-<div class="app">
-  <header class="topbar">
-    <span class="brand-num">#${esc(pr.number)}</span>
-    <span class="brand-title">${esc(pr.title)}</span>
-    <span class="brand-repo">${esc(pr.repo)}</span>
-    <span class="spacer"></span>
-    <button class="theme-toggle" id="theme-toggle">◐ Theme</button>
-  </header>
-  <nav class="tabbar">
-    ${hasBehaviour ? `<button class="tab${defaultTab === "behaviour" ? " on" : ""}" data-tab="behaviour">Behaviour <span class="cnt">${behaviourRows.length}</span></button>` : ""}
-    <button class="tab${defaultTab === "decisions" ? " on" : ""}" data-tab="decisions">Decisions <span class="cnt">${decisions.length}</span></button>
-    ${hasDiff ? `<button class="tab" data-tab="diff">Diff <span class="cnt">${changedFiles}</span></button>` : ""}
-  </nav>
-  ${hasBehaviour ? renderBehaviourTab(decisions, defaultTab === "behaviour") : ""}
-  ${renderDecisionsTab(decisions, coverage, defaultTab === "decisions")}
-  ${hasDiff ? renderDiffTab(diff, decisions, coverage) : ""}
-</div>
-<script>
-(function () {
-  // theme
-  document.getElementById("theme-toggle").addEventListener("click", function () {
-    var r = document.documentElement, c = r.getAttribute("data-theme");
-    var dark = c ? c === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
-    r.setAttribute("data-theme", dark ? "light" : "dark");
-  });
+  // Diff-first: the reviewer opens on the real unified diff, then pivots to the
+  // reasoning behind any line. Fall back to Behaviour, then Decisions, when a PR
+  // has no diff (pure framing/scope changes).
+  const defaultTab = hasDiff ? "diff" : hasBehaviour ? "behaviour" : "decisions";
 
-  // tabs
-  var tabs = Array.prototype.slice.call(document.querySelectorAll(".tab"));
-  var views = { decisions: document.getElementById("view-decisions"), behaviour: document.getElementById("view-behaviour"), diff: document.getElementById("view-diff") };
-  tabs.forEach(function (t) {
-    t.addEventListener("click", function () {
-      tabs.forEach(function (x) { x.classList.toggle("on", x === t); });
-      Object.keys(views).forEach(function (k) {
-        if (views[k]) views[k].classList.toggle("on", k === t.dataset.tab);
-      });
-    });
-  });
+  // Conditional tab buttons are logic, not markup — assembled here and injected
+  // into page.ejs. join("\n    ") reproduces the 4-space indent of each row.
+  const tabButtons = [
+    hasDiff ? `<button class="tab${defaultTab === "diff" ? " on" : ""}" data-tab="diff">Diff <span class="cnt">${changedFiles}</span></button>` : "",
+    hasBehaviour ? `<button class="tab${defaultTab === "behaviour" ? " on" : ""}" data-tab="behaviour">Behaviour <span class="cnt">${behaviourRows.length}</span></button>` : "",
+    `<button class="tab${defaultTab === "decisions" ? " on" : ""}" data-tab="decisions">Decisions <span class="cnt">${decisions.length}</span></button>`,
+  ].join("\n    ");
 
-  // decisions master/detail
-  var items = Array.prototype.slice.call(document.querySelectorAll(".di"));
-  var panes = Array.prototype.slice.call(document.querySelectorAll(".dpane"));
-  items.forEach(function (b) {
-    b.addEventListener("click", function () {
-      items.forEach(function (x) { x.classList.toggle("on", x === b); });
-      panes.forEach(function (p) { p.classList.toggle("on", p.dataset.idx === b.dataset.idx); });
-      var d = document.querySelector(".md-detail"); if (d) d.scrollTop = 0;
-    });
-  });
-  if (items[0]) items[0].classList.add("on");
+  const clientJs = assets.client.replace(/__BUCKET_RANK__/g, bucketRankLiteral());
 
-  // diff line -> reasoning drawer
-  var whyCards = Array.prototype.slice.call(document.querySelectorAll(".why-card"));
-  var whyEmpty = document.getElementById("diff-why-empty");
-  var attrLines = Array.prototype.slice.call(document.querySelectorAll(".dl.attr"));
-  attrLines.forEach(function (line) {
-    line.addEventListener("click", function () {
-      var id = line.dataset.decision;
-      attrLines.forEach(function (l) { l.classList.toggle("sel", l.dataset.decision === id && l === line); });
-      if (whyEmpty) whyEmpty.hidden = true;
-      whyCards.forEach(function (c) { c.hidden = c.dataset.decision !== id; });
-      var w = document.getElementById("diff-why"); if (w) w.scrollTop = 0;
-    });
-  });
+  return ejs.render(
+    assets.templates.page,
+    {
+      esc,
+      pr,
+      css: assets.css,
+      clientJs,
+      tabButtons,
+      diffTab: hasDiff ? renderDiffTab(diff, decisions, coverage, defaultTab === "diff") : "",
+      behaviourTab: hasBehaviour ? renderBehaviourTab(decisions, defaultTab === "behaviour") : "",
+      decisionsTab: renderDecisionsTab(decisions, coverage, defaultTab === "decisions"),
+    },
+    { rmWhitespace: false },
+  );
+}
 
-  // collapse/expand diff files
-  Array.prototype.slice.call(document.querySelectorAll(".diff-fhead")).forEach(function (h) {
-    h.addEventListener("click", function () { h.parentNode.classList.toggle("collapsed"); });
-  });
-
-  // behaviour matrix "why" -> expand the inline reasoning row in place
-  Array.prototype.slice.call(document.querySelectorAll(".bm-why")).forEach(function (a) {
-    a.addEventListener("click", function () {
-      var row = a.closest("tr");
-      var reason = row && row.nextElementSibling;
-      if (!reason || !reason.classList.contains("bm-reason")) return;
-      var open = reason.hasAttribute("hidden");
-      if (open) reason.removeAttribute("hidden");
-      else reason.setAttribute("hidden", "");
-      a.setAttribute("aria-expanded", open ? "true" : "false");
-      row.classList.toggle("expanded", open);
-    });
-  });
-})();
-</script>
-</body>
-</html>
-`;
+function loadAssets() {
+  const g = (...p) => fs.readFileSync(path.join(__dirname, "generator", ...p), "utf8");
+  return {
+    css: g("style.css"),
+    client: g("client.js").replace(/\n$/, ""),
+    templates: {
+      page: g("templates", "page.ejs"),
+      decisionCard: g("templates", "decision-card.ejs"),
+      diffFile: g("templates", "diff-file.ejs"),
+      coverage: g("templates", "coverage.ejs"),
+      behaviourRow: g("templates", "behaviour-row.ejs"),
+    },
+  };
 }
 
 function main() {
@@ -537,10 +495,9 @@ function main() {
     process.exit(2);
   }
   const data = JSON.parse(fs.readFileSync(src, "utf8"));
-  const css = fs.readFileSync(path.join(__dirname, "generator", "style.css"), "utf8");
-  fs.writeFileSync(out, render(data, css));
+  fs.writeFileSync(out, render(data, loadAssets()));
   console.log(`wrote ${out} · ${(data.decisions || []).length} decisions`);
 }
 
 if (require.main === module) main();
-module.exports = { render, renderDecision, renderCoverage, esc };
+module.exports = { render, renderDecision, renderCoverage, esc, loadAssets };

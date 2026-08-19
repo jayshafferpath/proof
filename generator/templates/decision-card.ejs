@@ -1,0 +1,8 @@
+<section class="dcard<%- compact ? " compact" : "" %>"<%- idAttr %>>
+      <div class="dcard-head"><%- head %></div>
+      <h2 class="dd-title"><%- esc(d.title) %></h2>
+      <p class="dd-chose"><%- richText(d.chose) %></p>
+      <%- rejected %>
+      <div class="lbl">Why it matters</div><p class="why"><%- richText(d.why) %></p>
+      <%- tail %>
+    </section>

@@ -1,0 +1,10 @@
+<tr class="bm-row k-<%- kind %>" data-decision="<%- decisionId %>">
+    <td class="bm-scenario">
+      <span class="bm-kind k-<%- kind %>"><%- kindLabel %></span>
+      <span class="bm-title"><%- esc(scenarioTitle) %></span>
+      <%- forkNote %>
+      <button class="bm-why" data-decision="<%- decisionId %>" aria-expanded="false">why<span class="bm-why-chev">▶</span></button>
+    </td>
+    <%- cells %>
+  </tr>
+  <tr class="bm-reason" data-decision="<%- decisionId %>" hidden><td colspan="4"><%- reasoning %></td></tr>
