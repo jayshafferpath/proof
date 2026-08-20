@@ -123,28 +123,61 @@ push updates one comment rather than accumulating. A failed run never blocks the
 (`continue-on-error`). The workflow requires the assumed IAM role to permit `bedrock:InvokeModel`
 on the chosen model; see `.plans/ci-run-for-pr.md`.
 
+## Retrofit — from a decision ledger instead of the model
+
+An alternative to reconstructing decisions from the diff: a **decision ledger**
+(`proof.ledger/v1`, append-only JSONL) records decisions as events, which reduce into a
+walkthrough spine (`proof.spine/v2`). A ledger can be **retrofit** from a finished PR's
+artifacts — reconstructed after the fact, so it is honestly capped at `through-review`
+provenance and never claims first-hand (see `docs/retrofit-ledger.md`).
+
+```sh
+# 1. produce the ledger from a PR's artifacts (interpretive — the /retrofit-ledger skill)
+# 2. render it (deterministic):
+./retrofit.sh prototype/data/pr-<n>.ledger.jsonl <pr-number> --repo owner/name
+```
+
+`retrofit.sh` pulls the PR's own diff (base-pinned via `gh pr diff`, immune to local rebase
+drift), attributes it, enriches `pr` with live repo/base/head SHAs, validates against
+`proof.spine/v2`, and renders. The walkthrough opens on **Decisions** with a **Diff** tab;
+Behaviour is absent until decisions carry runtime steps (live capture). Contracts and the
+machine-readable schemas live in `docs/contracts.md` and `schemas/`.
+
 ## Layout
 
 ```
-proof.sh                       pipeline runner (gather → generate → ingest → validate → render)
+proof.sh                       reconstruction pipeline (gather → generate → ingest → validate → render)
+retrofit.sh                    ledger pipeline (reduce → ingest gh pr diff → validate → render)
 build.sh                       regenerate the sample walkthroughs from prototype/data
-generate.js                    loads templates + assets, renders data → self-contained HTML
-validate.js                    enforces provenance, evidence, and coverage rules
+generate.js                    loads templates + assets, renders data → self-contained HTML (spine v1 + v2)
+validate.js                    enforces provenance, evidence, coverage; contract-versioned
 generator/
   templates/*.ejs              page shell + card/coverage/behaviour/diff markup
   client.js                    client-side behaviour (tabs, drawer, sort), inlined
   style.css                    stylesheet, inlined at generate time
   ingest-diff.js               attributes each diff line to a decision
+  reduce-ledger.js             folds a decision ledger into a walkthrough spine
+  ledger-cli.js                deterministic ledger writer (seq/id/commit/schema gate)
+  contract.js                  wire-contract negotiation (proof.ledger, proof.spine)
+  schema-check.js              zero-dep JSON Schema checker
   vendor/ejs.js                vendored EJS engine (committed; no npm install)
+schemas/
+  ledger.v1 / spine.v1 / spine.v2   machine-readable structural contracts
 prototype/
   *.html                       generated walkthroughs — gitignored, run ./build.sh
-  data/*.json                  walkthrough data (source of truth)
+  pr-277.html                  committed retrofit sample (spine v2, ledger-derived)
+  data/*.json  data/*.ledger.jsonl   walkthrough data + ledgers (source of truth)
+.claude/skills/
+  retrofit-ledger/             skill: PR artifacts → by:retrofit ledger
 .github/
   workflows/proof.yml          CI job
   upsert-comment.sh            marker-based PR comment upsert
 docs/
   design.md                    the model; settled vs. open questions
   generation-prompt.md         the prompt that produces walkthrough data
+  contracts.md                 versioned wire contracts + policy
+  ledger-schema.md spine-schema.md   the two contract shapes, annotated
+  retrofit-ledger.md           what a retrofit ledger is and its ceiling
 ```
 
 ## Status

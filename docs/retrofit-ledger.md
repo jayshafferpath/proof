@@ -67,9 +67,16 @@ Provenance across the whole ledger is `reconstructed` and `through-review` only 
 
 ## How one is made
 
-The writer is deterministic — `generator/ledger-cli.js` (`appendEvent`) owns `seq`, id minting,
-`commit`, `supersedes`, and the schema gate. The *extraction* — reading a ticket's artifacts and
-deciding what the decisions were — is model judgment, not a fixed parser, because artifact
-formats vary and the mapping is interpretive. So a retrofit is: read the artifacts → emit
-`by: retrofit` events through `appendEvent` → `reduce-ledger.js` folds them into the spine.
-Packaging that extraction as a reusable `/retrofit-ledger` skill is the next step.
+Two halves:
+
+- **Extraction (interpretive)** — the `/retrofit-ledger` skill (`.claude/skills/retrofit-ledger/`).
+  Reads a PR's artifacts (body, commits, and any local `pr-review-*.md`), identifies the
+  decisions, and emits `by: retrofit` events through `generator/ledger-cli.js` — the deterministic
+  writer that owns `seq`, id minting, `commit`, `supersedes`, and the schema gate. This is model
+  judgment, not a fixed parser, because artifact formats vary and the mapping is interpretive.
+- **Rendering (deterministic)** — `retrofit.sh <ledger> <pr-number> --repo owner/name`: reduce →
+  ingest the PR's own diff (base-pinned via `gh pr diff`, immune to local rebase drift) → enrich
+  `pr` with live repo/base/head SHAs → validate (`proof.spine/v2`) → render `prototype/pr-<n>.html`.
+
+So retrofitting any PR is: run `/retrofit-ledger <n>` (produces the ledger) → it calls
+`retrofit.sh` (produces the walkthrough).
