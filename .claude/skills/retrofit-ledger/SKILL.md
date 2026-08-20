@@ -14,6 +14,11 @@ fabricate reasoning; assert only what an artifact supports.
 The event contract is `docs/ledger-schema.md`. The deterministic back-half (reduce → ingest the
 PR diff → validate → render) is `retrofit.sh`; your job is producing the ledger.
 
+**Location.** The commands below invoke this repo's scripts via `${PROOF_HOME:-.}`. When
+installed globally (via `install-skills.sh`), set `PROOF_HOME` to the proof checkout; when
+running from inside the checkout, it defaults to `.`. Ledgers and renders land under
+`$PROOF_HOME/prototype/`.
+
 ## Inputs
 
 - `<pr-number>` and `--repo owner/name` (default: current checkout).
@@ -57,8 +62,8 @@ Every event is written through the CLI, which owns `seq`/id/`supersedes` and sch
 append. Pass the PR **head SHA** as `--commit` (the ledger has no repo/git context of its own):
 
 ```
-node generator/ledger-cli.js append \
-  --ledger prototype/data/pr-<n>.ledger.jsonl \
+node "${PROOF_HOME:-.}/generator/ledger-cli.js" append \
+  --ledger "${PROOF_HOME:-.}/prototype/data/pr-<n>.ledger.jsonl" \
   --commit <PR_HEAD_SHA> \
   --event '{"event":"realize","by":"retrofit","ticket":"<TICKET>","phase":"execute",
             "title":"...","chose":"...","rejected":"...","why":"...","ac":["AC-1"],
@@ -80,7 +85,7 @@ Rules:
 ### 4. Render
 
 ```
-./retrofit.sh prototype/data/pr-<n>.ledger.jsonl <n> --repo <repo>
+"${PROOF_HOME:-.}/retrofit.sh" "${PROOF_HOME:-.}/prototype/data/pr-<n>.ledger.jsonl" <n> --repo <repo>
 ```
 
 This pulls the PR's own diff (base-pinned — immune to local rebase drift), attributes it,
