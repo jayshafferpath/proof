@@ -69,14 +69,15 @@ Provenance across the whole ledger is `reconstructed` and `through-review` only 
 
 Two halves:
 
-- **Extraction (interpretive)** — the `/retrofit-ledger` skill (`.claude/skills/retrofit-ledger/`).
+- **Extraction (interpretive)** — the `/proof:retrofit-ledger` plugin skill (`skills/retrofit-ledger/`).
   Reads a PR's artifacts (body, commits, and any local `pr-review-*.md`), identifies the
   decisions, and emits `by: retrofit` events through `generator/ledger-cli.js` — the deterministic
   writer that owns `seq`, id minting, `commit`, `supersedes`, and the schema gate. This is model
   judgment, not a fixed parser, because artifact formats vary and the mapping is interpretive.
 - **Rendering (deterministic)** — `retrofit.sh <ledger> <pr-number> --repo owner/name`: reduce →
   ingest the PR's own diff (base-pinned via `gh pr diff`, immune to local rebase drift) → enrich
-  `pr` with live repo/base/head SHAs → validate (`proof.spine/v2`) → render `prototype/pr-<n>.html`.
+  `pr` with live repo/base/head SHAs → validate (`proof.spine/v2`) → render the walkthrough
+  (`./proof-out/pr-<n>.html` when run via the plugin skill).
 
-So retrofitting any PR is: run `/retrofit-ledger <n>` (produces the ledger) → it calls
+So retrofitting any PR is: run `/proof:retrofit-ledger <n>` (produces the ledger) → it calls
 `retrofit.sh` (produces the walkthrough).

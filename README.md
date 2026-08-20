@@ -11,9 +11,9 @@ quality, or suggest improvements.
 ## Requirements
 
 - `node` (no `npm install`; the only dependency, EJS, is committed at `generator/vendor/ejs.js`)
-- `gh` authenticated against the target repo (for `proof.sh`)
-- `jq` (for `proof.sh`)
-- `claude` CLI with AWS Bedrock access (for live generation; not needed with `--data`)
+- `gh` authenticated against the target repo (for `proof.sh` and `retrofit.sh` / the retrofit plugin)
+- `jq` (for `proof.sh` and `retrofit.sh`)
+- `claude` CLI with AWS Bedrock access (for live generation; not needed with `--data` or the retrofit path)
 
 ## Usage
 
@@ -143,13 +143,22 @@ drift), attributes it, enriches `pr` with live repo/base/head SHAs, validates ag
 Behaviour is absent until decisions carry runtime steps (live capture). Contracts and the
 machine-readable schemas live in `docs/contracts.md` and `schemas/`.
 
-To use `/retrofit-ledger` from any repo, install the skills globally and point `PROOF_HOME`
-at this checkout:
+To use `/proof:retrofit-ledger` from any repo, install proof as a Claude Code plugin. The
+whole checkout **is** the plugin, so its scripts travel with it — no `PROOF_HOME`, no reachable
+checkout to point back at:
 
 ```sh
-./install.sh                        # symlinks .claude/skills/* into ~/.claude/skills/
-export PROOF_HOME="$(pwd)"          # so the skill finds retrofit.sh / generator/ from elsewhere
+# persistent install — run these inside Claude Code, pointing at this checkout:
+/plugin marketplace add /path/to/proof
+/plugin install proof@proof
+
+# or a one-session dev load, from the shell:
+claude --plugin-dir /path/to/proof
 ```
+
+The skill resolves its scripts via `${CLAUDE_PLUGIN_ROOT}` (Claude Code substitutes the plugin's
+install path into the skill content) and writes the ledger + HTML to `./proof-out/` in whatever
+repo you invoke it from.
 
 ## Layout
 
@@ -157,7 +166,9 @@ export PROOF_HOME="$(pwd)"          # so the skill finds retrofit.sh / generator
 proof.sh                       reconstruction pipeline (gather → generate → ingest → validate → render)
 retrofit.sh                    ledger pipeline (reduce → ingest gh pr diff → validate → render)
 build.sh                       regenerate the sample walkthroughs from prototype/data
-install.sh                     symlink/copy .claude/skills/* into the global Claude skills dir
+.claude-plugin/
+  plugin.json                  plugin manifest — makes this repo installable as the `proof` plugin
+  marketplace.json             single-plugin marketplace catalog (points at ./)
 generate.js                    loads templates + assets, renders data → self-contained HTML (spine v1 + v2)
 validate.js                    enforces provenance, evidence, coverage; contract-versioned
 generator/
@@ -176,8 +187,8 @@ prototype/
   *.html                       generated walkthroughs — gitignored, run ./build.sh
   pr-277.html                  committed retrofit sample (spine v2, ledger-derived)
   data/*.json  data/*.ledger.jsonl   walkthrough data + ledgers (source of truth)
-.claude/skills/
-  retrofit-ledger/             skill: PR artifacts → by:retrofit ledger
+skills/
+  retrofit-ledger/             plugin skill (/proof:retrofit-ledger): PR artifacts → by:retrofit ledger
 .github/
   workflows/proof.yml          CI job
   upsert-comment.sh            marker-based PR comment upsert

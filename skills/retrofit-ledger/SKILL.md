@@ -14,10 +14,11 @@ fabricate reasoning; assert only what an artifact supports.
 The event contract is `docs/ledger-schema.md`. The deterministic back-half (reduce → ingest the
 PR diff → validate → render) is `retrofit.sh`; your job is producing the ledger.
 
-**Location.** The commands below invoke this repo's scripts via `${PROOF_HOME:-.}`. When
-installed globally (via `install.sh`), set `PROOF_HOME` to the proof checkout; when
-running from inside the checkout, it defaults to `.`. Ledgers and renders land under
-`$PROOF_HOME/prototype/`.
+**Location.** This is a plugin skill. The commands below invoke the bundled scripts via
+`${CLAUDE_PLUGIN_ROOT}` — Claude Code substitutes the plugin's install path into this skill
+content, so the scripts resolve wherever the plugin lives, with no `PROOF_HOME` and no
+reachable checkout required. Ledger and render **outputs** go to `./proof-out/` in the current
+working directory (the repo you are retrofitting), never inside the plugin.
 
 ## Inputs
 
@@ -62,10 +63,10 @@ Every event is written through the CLI, which owns `seq`/id/`supersedes` and sch
 append. Pass the PR **head SHA** as `--commit` (the ledger has no repo/git context of its own):
 
 ```
-node "${PROOF_HOME:-.}/generator/ledger-cli.js" append \
-  --ledger "${PROOF_HOME:-.}/prototype/data/pr-<n>.ledger.jsonl" \
+node "${CLAUDE_PLUGIN_ROOT}/generator/ledger-cli.js" append \
+  --ledger "proof-out/pr-<n>.ledger.jsonl" \
   --commit <PR_HEAD_SHA> \
-  --event '{"event":"realize","by":"retrofit","ticket":"<TICKET>","phase":"execute",
+  --event '{"event":"realize","id":"d1","by":"retrofit","ticket":"<TICKET>","phase":"execute",
             "title":"...","chose":"...","rejected":"...","why":"...","ac":["AC-1"],
             "anchors":[{"file":"path","lines":"~","role":"anchor"}]}'
 ```
@@ -76,21 +77,22 @@ Rules:
 - **Anchors are coarse.** `file` + `role` (`anchor` unless it's a real before/after story). Add
   `lines` only when the artifact cites an exact line (e.g. a review finding `foo.ts:344`); use
   `"~"` otherwise. Set `context: true` for out-of-diff or deliberate-non-change anchors.
-- **`realize` may establish a new decision** (it carries a title); `verify` must reference an
-  already-emitted decision `id` (the CLI prints each minted id). Attach a `verify` to the
-  decision whose evidence the review actually checked.
+- **`realize` may establish a new decision** — give it an explicit `id` (`d1`, `d2`, … — the CLI
+  does *not* auto-mint ids for `realize`/`revise`, only for `propose`/`reject`) and a `title`.
+  `verify` must reference an already-emitted decision `id`. Attach a `verify` to the decision
+  whose evidence the review actually checked.
 - **`reject` requires a `reason`** and is its own decision (id `r*`).
 - The CLI writes the `{"contract":"proof.ledger/v1"}` header on first append.
 
 ### 4. Render
 
 ```
-"${PROOF_HOME:-.}/retrofit.sh" "${PROOF_HOME:-.}/prototype/data/pr-<n>.ledger.jsonl" <n> --repo <repo>
+"${CLAUDE_PLUGIN_ROOT}/retrofit.sh" "proof-out/pr-<n>.ledger.jsonl" <n> --repo <repo> --out proof-out
 ```
 
 This pulls the PR's own diff (base-pinned — immune to local rebase drift), attributes it,
 enriches `pr` with the live repo/base/head SHAs (so code citations link to GitHub), validates
-against `proof.spine/v2`, and writes `prototype/pr-<n>.html`.
+against `proof.spine/v2`, and writes `proof-out/pr-<n>.html`.
 
 ## Output
 
