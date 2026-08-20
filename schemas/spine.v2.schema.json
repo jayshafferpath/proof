@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pathccm.dev/proof/schemas/spine.v2.schema.json",
+  "title": "proof.spine/v2",
+  "description": "Ledger-native walkthrough spine emitted by reduce-ledger.js. Provenance is a derived tier (no author/infer quote); decisions may carry revise history and rejects. Structure only; cross-field semantics are in validate.js.",
+  "type": "object",
+  "required": ["contract", "pr", "decisions"],
+  "properties": {
+    "contract": { "type": "string", "pattern": "^proof\\.spine/v2$" },
+    "pr": {
+      "type": "object",
+      "required": ["number"],
+      "properties": {
+        "number": { "type": ["string", "number"] },
+        "ticket": { "type": "string" },
+        "title": { "type": "string" },
+        "repo": { "type": "string" },
+        "headSha": { "type": "string" },
+        "baseSha": { "type": "string" }
+      }
+    },
+    "decisions": { "type": "array", "items": { "$ref": "#/$defs/decision" } },
+    "coverage": { "$ref": "#/$defs/coverage" },
+    "ledgerMeta": { "type": "object" }
+  },
+  "$defs": {
+    "provenance": {
+      "type": "string",
+      "enum": ["reconstructed", "first-hand", "through-review", "machine-verified", "author-confirmed", "author-verified"]
+    },
+    "decision": {
+      "type": "object",
+      "required": ["id", "title", "provenance"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "chose": { "type": "string" },
+        "rejected": { "type": "string" },
+        "why": { "type": "string" },
+        "ac": { "type": "array", "items": { "type": "string" } },
+        "isReject": { "type": "boolean" },
+        "provenance": { "$ref": "#/$defs/provenance" },
+        "provenanceTrail": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["seq", "event", "phase"],
+            "properties": {
+              "seq": { "type": "integer" },
+              "event": { "type": "string" },
+              "by": { "type": "string" },
+              "phase": { "type": "string" },
+              "reason": { "type": "string" }
+            }
+          }
+        },
+        "history": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "seq": { "type": "integer" },
+              "chose": { "type": "string" },
+              "why": { "type": "string" },
+              "reason": { "type": "string" }
+            }
+          }
+        },
+        "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidence" } },
+        "tests": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["file"],
+            "properties": {
+              "file": { "type": "string" },
+              "name": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "required": ["kind", "code"],
+      "properties": {
+        "kind": { "type": "string", "enum": ["divergence", "trace", "anchor"] },
+        "code": {
+          "type": "object",
+          "required": ["file"],
+          "properties": {
+            "file": { "type": "string", "minLength": 1 },
+            "lines": { "type": "string" },
+            "context": { "type": "boolean" },
+            "hl": { "type": "array", "items": { "type": "integer" } }
+          }
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "properties": {
+        "explained": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["file"],
+            "properties": {
+              "file": { "type": "string" },
+              "byDecisions": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
+        "tests": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["file"],
+            "properties": {
+              "file": { "type": "string" },
+              "covers": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}
