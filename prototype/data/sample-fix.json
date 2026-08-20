@@ -1,4 +1,5 @@
 {
+  "contract": "proof.spine/v1",
   "pr": {
     "number": "482",
     "title": "fix: skip records with an unrecognized category",

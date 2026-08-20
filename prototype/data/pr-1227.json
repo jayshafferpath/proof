@@ -1,4 +1,5 @@
 {
+  "contract": "proof.spine/v1",
   "pr": {
     "number": "1227",
     "title": "NEV-1645: Send a practice's report link to its HubSpot contact, behind a marketing flag",

@@ -1,0 +1,164 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pathccm.dev/proof/schemas/spine.v1.schema.json",
+  "title": "proof.spine/v1",
+  "description": "Walkthrough spine emitted by generation. Structure only; cross-field semantics (duplicate-hunk, coverage/spine integrity, divergeAt range) are enforced by validate.js.",
+  "type": "object",
+  "required": ["contract", "pr", "decisions"],
+  "properties": {
+    "contract": { "type": "string", "pattern": "^proof\\.spine/v1$" },
+    "pr": {
+      "type": "object",
+      "required": ["number"],
+      "properties": {
+        "number": { "type": ["string", "number"] },
+        "title": { "type": "string" },
+        "repo": { "type": "string" },
+        "headSha": { "type": "string" },
+        "baseSha": { "type": "string" }
+      }
+    },
+    "decisions": { "type": "array", "items": { "$ref": "#/$defs/decision" } },
+    "coverage": { "$ref": "#/$defs/coverage" },
+    "diff": { "type": "array", "items": { "type": "object" } }
+  },
+  "$defs": {
+    "decision": {
+      "type": "object",
+      "required": ["id", "title", "source", "chose", "why"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "source": { "type": "string", "enum": ["author", "infer"] },
+        "chose": { "type": "string", "minLength": 1 },
+        "rejected": { "type": "string" },
+        "why": { "type": "string", "minLength": 1 },
+        "quote": { "type": "string" },
+        "quoteSrc": { "type": "string" },
+        "inferNote": { "type": "string" },
+        "inferSrc": { "type": "string" },
+        "note": { "type": "string" },
+        "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidence" } }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "source": { "const": "author" } } },
+          "then": { "required": ["quote", "quoteSrc"] }
+        },
+        {
+          "if": { "properties": { "source": { "const": "infer" } } },
+          "then": { "required": ["inferNote", "inferSrc"] }
+        }
+      ]
+    },
+    "evidence": {
+      "type": "object",
+      "required": ["kind", "code"],
+      "properties": {
+        "kind": { "type": "string", "enum": ["divergence", "trace", "anchor"] },
+        "regression": { "type": "boolean" },
+        "divergeAt": { "type": "integer" },
+        "divergeNote": { "type": "string" },
+        "claim": { "type": "string" },
+        "before": { "type": "array", "items": { "$ref": "#/$defs/step" } },
+        "after": { "type": "array", "items": { "$ref": "#/$defs/step" } },
+        "trace": { "type": "array", "items": { "$ref": "#/$defs/step" } },
+        "tests": { "type": "array", "items": { "$ref": "#/$defs/test" } },
+        "code": { "$ref": "#/$defs/code" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "divergence" } } },
+          "then": { "required": ["before", "after"] }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "trace" } } },
+          "then": { "required": ["trace"] }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "anchor" } } },
+          "then": { "required": ["claim"] }
+        }
+      ]
+    },
+    "step": {
+      "type": "object",
+      "required": ["step"],
+      "properties": {
+        "step": { "type": "string", "minLength": 1 },
+        "note": { "type": "string" },
+        "bad": { "type": "boolean" },
+        "good": { "type": "boolean" },
+        "terminal": { "type": "boolean" }
+      }
+    },
+    "test": {
+      "type": "object",
+      "required": ["file", "name"],
+      "properties": {
+        "file": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 }
+      }
+    },
+    "code": {
+      "type": "object",
+      "required": ["file", "rows"],
+      "properties": {
+        "file": { "type": "string", "minLength": 1 },
+        "lines": { "type": "string" },
+        "context": { "type": "boolean" },
+        "hl": { "type": "array", "items": { "type": "integer" } },
+        "rows": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/row" } }
+      }
+    },
+    "row": {
+      "type": "array",
+      "minItems": 3,
+      "items": [
+        { "type": ["string", "integer"] },
+        { "type": "string" },
+        { "type": "integer" }
+      ]
+    },
+    "coverage": {
+      "type": "object",
+      "properties": {
+        "explained": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["file"],
+            "properties": {
+              "file": { "type": "string" },
+              "byDecisions": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
+        "mechanical": { "$ref": "#/$defs/covWhy" },
+        "tests": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["file"],
+            "properties": {
+              "file": { "type": "string" },
+              "covers": { "type": "string" }
+            }
+          }
+        },
+        "unexplained": { "$ref": "#/$defs/covWhy" }
+      }
+    },
+    "covWhy": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file"],
+        "properties": {
+          "file": { "type": "string" },
+          "why": { "type": "string" }
+        }
+      }
+    }
+  }
+}

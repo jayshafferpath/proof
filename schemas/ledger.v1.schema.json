@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pathccm.dev/proof/schemas/ledger.v1.schema.json",
+  "title": "proof.ledger/v1 event",
+  "description": "One append-only ledger event line. Header lines ({\"contract\": ...}) are not events and are validated by contract negotiation, not this schema. Cross-event invariants (monotonic seq, revise-supersedes-earlier, verify-after-realize) are enforced by the reducer/validator, not here.",
+  "type": "object",
+  "required": ["event", "ticket", "seq", "phase", "by", "commit"],
+  "properties": {
+    "event": { "type": "string", "enum": ["propose", "confirm", "realize", "revise", "reject", "verify", "close"] },
+    "id": { "type": "string", "minLength": 1 },
+    "ticket": { "type": "string", "minLength": 1 },
+    "seq": { "type": "integer" },
+    "phase": { "type": "string", "enum": ["plan", "execute", "review", "copilot"] },
+    "by": { "type": "string", "enum": ["agent", "human", "retrofit"] },
+    "commit": { "type": "string", "minLength": 1 },
+    "title": { "type": "string" },
+    "chose": { "type": "string" },
+    "rejected": { "type": "string" },
+    "why": { "type": "string" },
+    "ac": { "type": "array", "items": { "type": "string" } },
+    "reason": { "type": "string" },
+    "supersedes": { "type": "string" },
+    "tests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "name"],
+        "properties": {
+          "file": { "type": "string", "minLength": 1 },
+          "name": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "anchors": { "type": "array", "items": { "$ref": "#/$defs/anchor" } }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "event": { "const": "close" } } },
+      "then": {},
+      "else": { "required": ["id"] }
+    },
+    {
+      "if": { "properties": { "event": { "const": "revise" } } },
+      "then": { "required": ["supersedes"] }
+    },
+    {
+      "if": { "properties": { "event": { "const": "reject" } } },
+      "then": { "required": ["reason"] }
+    }
+  ],
+  "$defs": {
+    "anchor": {
+      "type": "object",
+      "required": ["file", "role"],
+      "properties": {
+        "file": { "type": "string", "minLength": 1 },
+        "lines": { "type": "string" },
+        "sha": { "type": "string" },
+        "fingerprint": { "type": "string" },
+        "role": { "type": "string", "enum": ["divergence", "trace", "anchor"] },
+        "hl": { "type": "array", "items": { "type": "integer" } },
+        "context": { "type": "boolean" },
+        "divergeAt": { "type": "string" }
+      }
+    }
+  }
+}

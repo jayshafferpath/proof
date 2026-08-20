@@ -154,8 +154,13 @@ entirely for a trivial PR; when present, it is validated against the spine.
 
 ## Output
 
+The object MUST validate against `schemas/spine.v1.schema.json` (contract `proof.spine/v1`).
+Emit the `contract` field verbatim as the first key; `validate.js` gates on the schema before any
+semantic check, so a shape violation is rejected outright.
+
 ```jsonc
 {
+  "contract": "proof.spine/v1",
   "pr": { "number": "482", "title": "…", "repo": "owner/name" },
   "decisions": [
     {

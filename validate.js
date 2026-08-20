@@ -5,6 +5,9 @@
  * Usage: node validate.js prototype/data/sample-fix.json
  */
 const fs = require("fs");
+const path = require("path");
+const { negotiate } = require("./generator/contract");
+const { checkFile } = require("./generator/schema-check");
 
 const file = process.argv[2];
 if (!file) {
@@ -13,11 +16,79 @@ if (!file) {
 }
 
 const data = JSON.parse(fs.readFileSync(file, "utf8"));
+
+// Contract gate: this validator implements the proof.spine/v1 ruleset. A newer
+// or foreign contract is a precondition error (exit 2), not a data-invalid
+// result (exit 1). Unversioned input is assumed v1 for back-compat.
+let contract;
+try {
+  contract = negotiate(data.contract, "proof.spine", { defaultMajor: 1 });
+} catch (e) {
+  console.error(`contract error: ${e.message}`);
+  process.exit(2);
+}
+
+// Unversioned input is treated as v1; stamp the assumed tag so the structural
+// schema (which requires it) passes, and the reader sees what was assumed.
+if (contract.assumed) data.contract = "proof.spine/v1";
+
+// v2 (ledger-native) has its own structural schema and a lighter semantic ruleset
+// — no author/quote checks (provenance is a derived tier, not a quote). Runs and
+// exits here so the v1 path below stays untouched.
+if (contract.major === 2) {
+  const errs = checkFile(path.join(__dirname, "schemas", "spine.v2.schema.json"), data);
+  const ids = new Set((data.decisions || []).map((d) => d.id));
+  for (const e of (data.coverage && data.coverage.explained) || []) {
+    for (const id of e.byDecisions || []) {
+      if (!ids.has(id)) errs.push({ path: `coverage.explained[${e.file}]`, message: `unknown decision "${id}"` });
+    }
+  }
+  // Diff (optional, derived by ingest-diff.js): line attributions must cite real
+  // decisions. Files absent from coverage warn (retrofit's unexplained remainder),
+  // they don't error.
+  const v2warn = [];
+  if (Array.isArray(data.diff)) {
+    const covFiles = new Map();
+    for (const b of ["explained", "tests"])
+      for (const e of (data.coverage && data.coverage[b]) || []) covFiles.set(e.file, b);
+    for (const f of data.diff) {
+      if (!covFiles.has(f.file)) v2warn.push(`diff: ${f.file} not in coverage — unexplained`);
+      for (const h of f.hunks || [])
+        for (const ln of h.lines || [])
+          if (ln.decision && !ids.has(ln.decision))
+            errs.push({ path: `diff[${f.file}]:${ln.new}`, message: `cites unknown decision "${ln.decision}"` });
+    }
+  }
+  for (const w of v2warn) console.log(`  warn  ${w}`);
+  for (const e of errs) console.log(`  ERROR ${e.path} — ${e.message}`);
+  const decs = (data.decisions || []).filter((d) => !d.isReject).length;
+  const rej = (data.decisions || []).length - decs;
+  const tiers = {};
+  for (const d of data.decisions || []) tiers[d.provenance] = (tiers[d.provenance] || 0) + 1;
+  console.log(
+    `proof.spine/v2 · ${decs} decisions, ${rej} rejects · ` +
+      Object.entries(tiers).map(([t, n]) => `${n} ${t}`).join(", "),
+  );
+  console.log(errs.length ? `\n${errs.length} error(s)` : "\nvalid");
+  process.exit(errs.length ? 1 : 0);
+}
+
+// Structural gate: the payload must match schemas/spine.v1.schema.json before any
+// semantic rule runs. A shape violation is data-invalid (exit 1), reported by
+// JSON-pointer path. Semantics that JSON Schema can't express are checked below.
+const schemaErrors = checkFile(path.join(__dirname, "schemas", "spine.v1.schema.json"), data);
+if (schemaErrors.length) {
+  for (const e of schemaErrors) console.log(`  ERROR schema: ${e.path} — ${e.message}`);
+  console.log(`\n${schemaErrors.length} schema error(s) — payload does not match proof.spine/v1`);
+  process.exit(1);
+}
+
 const { decisions = [] } = data;
 const decIds = new Set(decisions.map((d) => d.id));
 const testFiles = new Set(((data.coverage && data.coverage.tests) || []).map((e) => e.file));
 const errors = [];
 const warnings = [];
+if (contract.assumed) warnings.push(`no contract field — assuming proof.spine/v1`);
 
 const KINDS = ["divergence", "trace", "anchor"];
 const steps = (frag, side) => frag[side] || [];

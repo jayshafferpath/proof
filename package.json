@@ -1,0 +1,19 @@
+{
+  "name": "proof",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Generates a self-contained HTML walkthrough of a pull request.",
+  "bin": {
+    "proof": "./proof.sh"
+  },
+  "scripts": {
+    "proof": "./proof.sh",
+    "ingest": "node generator/ingest-diff.js",
+    "validate": "node validate.js",
+    "render": "node generate.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED"
+}

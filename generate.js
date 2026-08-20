@@ -433,10 +433,191 @@ function renderBehaviourTab(decisions, active) {
   </div>`;
 }
 
+// ---- proof.spine/v2 (ledger-native) ----
+function provChip(tier) {
+  const strong = ["machine-verified", "author-confirmed", "author-verified"].includes(tier);
+  const glyph = tier.startsWith("author") ? "✎" : tier === "machine-verified" ? "⚙" : "⟲";
+  return `<span class="schip ${strong ? "author" : "infer"}" title="provenance tier">${glyph} ${esc(tier)}</span>`;
+}
+
+function renderEvidenceV2(ev) {
+  const url = ghUrl(ev.code);
+  const label = `<span class="fp">${esc(ev.code.file)}</span>${ev.code.lines ? `<span>${esc(ev.code.lines)}</span>` : ""}`;
+  const head = url
+    ? `<a class="ev-file-link" href="${esc(url)}" target="_blank" rel="noopener">${label}<span class="gh-glyph" title="View on GitHub">↗</span></a>`
+    : label;
+  return `<div class="code-wrap"><div class="ev-block"><div class="ev-file"><span class="role-badge">${esc(ev.kind)}</span>${head}${
+    ev.code.context ? '<span class="ctx-badge">context · not under review</span>' : ""
+  }</div></div></div>`;
+}
+
+function renderDecisionV2(d, i, opts) {
+  const withId = !(opts && opts.noId);
+  const acChips = (d.ac || []).map((a) => `<span class="cov-ref">${esc(a)}</span>`).join("");
+  const evList = (d.evidence || []).map(renderEvidenceV2).join("");
+  const evidence = evList
+    ? `<div class="evidence"><div class="ev-lbl">${d.isReject ? "Where it applies" : "Evidence"}</div>${evList}</div>`
+    : "";
+  const hist = (d.history || []).length
+    ? `<details class="histbox"><summary>Superseded — ${d.history.length} earlier state${d.history.length > 1 ? "s" : ""}</summary>${(d.history || [])
+        .map(
+          (h) =>
+            `<div class="hist-entry">${h.chose ? `<p class="dd-chose">${richText(h.chose)}</p>` : ""}${
+              h.why ? `<p class="why">${richText(h.why)}</p>` : ""
+            }${h.reason ? `<div class="nbox">changed: ${esc(h.reason)}</div>` : ""}</div>`,
+        )
+        .join("")}</details>`
+    : "";
+  const trail = (d.provenanceTrail || []).length
+    ? `<details class="trailbox"><summary>Provenance trail · ${d.provenanceTrail.length} events</summary><ul class="trail">${d.provenanceTrail
+        .map(
+          (t) =>
+            `<li><code>${esc(t.event)}</code> · ${esc(t.phase)}${t.by ? ` · ${esc(t.by)}` : ""}${
+              t.reason ? ` — ${esc(t.reason)}` : ""
+            }</li>`,
+        )
+        .join("")}</ul></details>`
+    : "";
+  return `<section class="dcard${d.isReject ? " declined" : ""}"${withId ? ` id="${esc(d.id)}"` : ""}>
+      <div class="dcard-head"><span class="dnum">${d.isReject ? "✕" : i + 1}</span>${provChip(d.provenance)}${
+        acChips ? `<span class="ac-chips">${acChips}</span>` : ""
+      }</div>
+      <h2 class="dd-title">${esc(d.title)}</h2>
+      ${d.chose ? `<p class="dd-chose">${richText(d.chose)}</p>` : ""}
+      ${d.rejected ? `<div class="contrast"><span class="ck">${d.isReject ? "declined" : "instead of"}</span><span class="cv"><span class="strike">${richText(d.rejected)}</span></span></div>` : ""}
+      ${d.why ? `<div class="lbl">Why it matters</div><p class="why">${richText(d.why)}</p>` : ""}
+      ${hist}${trail}${evidence}
+    </section>`;
+}
+
+function mdListItemV2(d, i) {
+  const flag = `<span class="di-flag infer" title="${esc(d.provenance)}">${d.isReject ? "declined" : esc(d.provenance)}</span>`;
+  return `<button class="di" data-idx="${i}">
+    <span class="di-num">${d.isReject ? "✕" : i + 1}</span>
+    <span class="di-body"><span class="di-title">${esc(d.title)}</span>${flag}</span>
+  </button>`;
+}
+
+function renderDecisionsTabV2(decisions, coverage) {
+  const real = decisions.filter((d) => !d.isReject).length;
+  const list = decisions.map(mdListItemV2).join("\n");
+  const panes = decisions
+    .map((d, i) => `<div class="dpane${i === 0 ? " on" : ""}" data-idx="${i}">${renderDecisionV2(d, i)}</div>`)
+    .join("\n");
+  const cov = coverage ? `<div class="md-cov">${renderCoverage(coverage, decisions)}</div>` : "";
+  return `<div class="tabview md on" id="view-decisions">
+    <aside class="md-list">
+      <div class="md-list-h">${real} decisions · ${decisions.length - real} rejected</div>
+      ${list}
+      ${cov}
+    </aside>
+    <section class="md-detail"><div class="detail-pane">${panes}</div></section>
+  </div>`;
+}
+
+function renderDiffTabV2(diff, decisions, coverage) {
+  const files = diff.map((f) => renderDiffFile(f, coverage)).join("\n");
+  const cards = decisions
+    .map((d, i) => `<div class="why-card" data-decision="${esc(d.id)}" hidden>${renderDecisionV2(d, i, { noId: true })}</div>`)
+    .join("\n");
+  return `<div class="tabview diff" id="view-diff">
+    <section class="diff-files">${files}</section>
+    <aside class="diff-why" id="diff-why">
+      <div class="diff-why-hint">Reasoning</div>
+      <div class="diff-why-empty" id="diff-why-empty">Click a highlighted line to see the decision behind it.</div>
+      ${cards}
+    </aside>
+  </div>`;
+}
+
+function renderV2Page(data, assets) {
+  const { pr = {}, decisions = [], coverage, diff } = data;
+  PR = pr;
+  const hasDiff = Array.isArray(diff) && diff.length > 0;
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(pr.ticket || pr.number)} — walkthrough</title>
+<style>
+${assets.css}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <span class="brand-num">${esc(pr.ticket || pr.number)}</span>
+    <span class="brand-title">${esc(pr.title || "decision walkthrough")}</span>
+    <span class="brand-repo">${esc(pr.repo || "ledger-derived · draft")}</span>
+    <span class="spacer"></span>
+    <button class="theme-toggle" id="theme-toggle">◐ Theme</button>
+  </header>
+  <nav class="tabbar">
+    <button class="tab on" data-tab="decisions">Decisions <span class="cnt">${decisions.length}</span></button>
+    ${hasDiff ? `<button class="tab" data-tab="diff">Diff <span class="cnt">${diff.length}</span></button>` : ""}
+  </nav>
+  ${renderDecisionsTabV2(decisions, coverage)}
+  ${hasDiff ? renderDiffTabV2(diff, decisions, coverage) : ""}
+</div>
+<script>
+(function () {
+  document.getElementById("theme-toggle").addEventListener("click", function () {
+    var r = document.documentElement, c = r.getAttribute("data-theme");
+    var dark = c ? c === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    r.setAttribute("data-theme", dark ? "light" : "dark");
+  });
+
+  var tabs = Array.prototype.slice.call(document.querySelectorAll(".tab"));
+  var views = { decisions: document.getElementById("view-decisions"), diff: document.getElementById("view-diff") };
+  tabs.forEach(function (t) {
+    t.addEventListener("click", function () {
+      tabs.forEach(function (x) { x.classList.toggle("on", x === t); });
+      Object.keys(views).forEach(function (k) {
+        if (views[k]) views[k].classList.toggle("on", k === t.dataset.tab);
+      });
+    });
+  });
+
+  var items = Array.prototype.slice.call(document.querySelectorAll(".di"));
+  var panes = Array.prototype.slice.call(document.querySelectorAll(".dpane"));
+  items.forEach(function (b) {
+    b.addEventListener("click", function () {
+      items.forEach(function (x) { x.classList.toggle("on", x === b); });
+      panes.forEach(function (p) { p.classList.toggle("on", p.dataset.idx === b.dataset.idx); });
+      var d = document.querySelector(".md-detail"); if (d) d.scrollTop = 0;
+    });
+  });
+  if (items[0]) items[0].classList.add("on");
+
+  var whyCards = Array.prototype.slice.call(document.querySelectorAll(".why-card"));
+  var whyEmpty = document.getElementById("diff-why-empty");
+  var attrLines = Array.prototype.slice.call(document.querySelectorAll(".dl.attr"));
+  attrLines.forEach(function (line) {
+    line.addEventListener("click", function () {
+      var id = line.dataset.decision;
+      attrLines.forEach(function (l) { l.classList.toggle("sel", l.dataset.decision === id && l === line); });
+      if (whyEmpty) whyEmpty.hidden = true;
+      whyCards.forEach(function (c) { c.hidden = c.dataset.decision !== id; });
+      var w = document.getElementById("diff-why"); if (w) w.scrollTop = 0;
+    });
+  });
+
+  Array.prototype.slice.call(document.querySelectorAll(".diff-fhead")).forEach(function (h) {
+    h.addEventListener("click", function () { h.parentNode.classList.toggle("collapsed"); });
+  });
+})();
+</script>
+</body>
+</html>
+`;
+}
+
 function render(data, assets) {
   const { pr = {}, decisions = [], coverage, diff } = data;
   PR = pr;
   TEMPLATES = assets.templates;
+  if (data.contract === "proof.spine/v2") return renderV2Page(data, assets);
   const hasDiff = Array.isArray(diff) && diff.length > 0;
   const changedFiles = hasDiff ? diff.length : 0;
   const behaviourRows = behaviourScenarios(decisions);
