@@ -15,7 +15,7 @@ The event contract is `docs/ledger-schema.md`. The deterministic back-half (redu
 PR diff → validate → render) is `retrofit.sh`; your job is producing the ledger.
 
 **Location.** The commands below invoke this repo's scripts via `${PROOF_HOME:-.}`. When
-installed globally (via `install-skills.sh`), set `PROOF_HOME` to the proof checkout; when
+installed globally (via `install.sh`), set `PROOF_HOME` to the proof checkout; when
 running from inside the checkout, it defaults to `.`. Ledgers and renders land under
 `$PROOF_HOME/prototype/`.
 

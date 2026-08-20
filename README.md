@@ -147,7 +147,7 @@ To use `/retrofit-ledger` from any repo, install the skills globally and point `
 at this checkout:
 
 ```sh
-./install-skills.sh                 # symlinks .claude/skills/* into ~/.claude/skills/
+./install.sh                        # symlinks .claude/skills/* into ~/.claude/skills/
 export PROOF_HOME="$(pwd)"          # so the skill finds retrofit.sh / generator/ from elsewhere
 ```
 
@@ -157,7 +157,7 @@ export PROOF_HOME="$(pwd)"          # so the skill finds retrofit.sh / generator
 proof.sh                       reconstruction pipeline (gather → generate → ingest → validate → render)
 retrofit.sh                    ledger pipeline (reduce → ingest gh pr diff → validate → render)
 build.sh                       regenerate the sample walkthroughs from prototype/data
-install-skills.sh              symlink/copy .claude/skills/* into the global Claude skills dir
+install.sh                     symlink/copy .claude/skills/* into the global Claude skills dir
 generate.js                    loads templates + assets, renders data → self-contained HTML (spine v1 + v2)
 validate.js                    enforces provenance, evidence, coverage; contract-versioned
 generator/

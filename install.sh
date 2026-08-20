@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 #
-# install-skills.sh — install a repo's Claude Code skills into your skills dir.
+# install.sh — install a repo's Claude Code skills into your skills dir.
 #
 # Symlinks (default) or copies each skill directory under a source skills dir into
 # ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills, making them available in every
 # session, not just from a checkout. Idempotent. Repo-agnostic.
 #
 # Usage:
-#   install-skills.sh [--from <dir>] [--dir <dir>] [--copy] [--force] [--uninstall]
+#   install.sh [--from <dir>] [--dir <dir>] [--copy] [--force] [--uninstall]
 #
 #   --from <d>   source skills dir (default: <this script's repo>/.claude/skills)
 #   --dir <d>    target skills dir (default: $CLAUDE_CONFIG_DIR/skills or ~/.claude/skills)
