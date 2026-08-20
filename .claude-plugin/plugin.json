@@ -1,0 +1,8 @@
+{
+  "name": "proof",
+  "version": "0.1.0",
+  "description": "Retrofit a decision-ledger walkthrough from a pull request's artifacts and render it as a self-contained HTML page.",
+  "author": {
+    "name": "Jay Shaffer"
+  }
+}

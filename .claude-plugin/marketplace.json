@@ -1,0 +1,14 @@
+{
+  "name": "proof",
+  "description": "proof — generate self-contained HTML walkthroughs of pull requests from a decision ledger.",
+  "owner": {
+    "name": "Jay Shaffer"
+  },
+  "plugins": [
+    {
+      "name": "proof",
+      "source": "./",
+      "description": "Retrofit a decision-ledger walkthrough from a pull request's artifacts."
+    }
+  ]
+}
