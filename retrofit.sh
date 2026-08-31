@@ -19,6 +19,8 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=generator/lib.sh
+. "$HERE/generator/lib.sh"
 
 LEDGER=""
 PR=""
@@ -40,9 +42,7 @@ if [ -z "$LEDGER" ] || [ -z "$PR" ]; then
   exit 2
 fi
 [ -r "$LEDGER" ] || { echo "❌ ledger not readable: $LEDGER" >&2; exit 2; }
-if [ -z "$REPO" ]; then
-  REPO="${GITHUB_REPOSITORY:-$(gh repo view --json nameWithOwner --jq .nameWithOwner)}"
-fi
+REPO="$(resolve_repo "$REPO")"
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -52,9 +52,7 @@ DIFF="$TMP/pr-$PR.diff"
 META="$TMP/pr-$PR.meta.json"
 
 echo "· [1/5] gather — PR #$PR in $REPO"
-gh pr view "$PR" --repo "$REPO" \
-  --json number,title,baseRefName,baseRefOid,headRefName,headRefOid > "$META"
-gh pr diff "$PR" --repo "$REPO" > "$DIFF"
+gather "$PR" "$REPO" "$META" "$DIFF"
 HEAD_SHA="$(jq -r '.headRefOid' "$META")"
 BASE_SHA="$(jq -r '.baseRefOid' "$META")"
 TITLE="$(jq -r '.title' "$META")"
@@ -63,20 +61,15 @@ echo "    head=${HEAD_SHA:0:7} base=${BASE_SHA:0:7}"
 echo "· [2/5] reduce — ledger → spine (proof.spine/v2)"
 node "$HERE/generator/reduce-ledger.js" "$LEDGER" "$REDUCED"
 
-echo "· [3/5] ingest — attribute the PR diff"
-node "$HERE/generator/ingest-diff.js" "$REDUCED" "$DIFF" "$REDUCED"
-
 # Prefer live gh facts for the pr coordinates — code citations pin to these SHAs,
 # and the ledger does not carry repo/base/head (see docs/retrofit-ledger.md).
-echo "· [4/5] enrich + validate"
-jq --arg n "$PR" --arg t "$TITLE" --arg r "$REPO" --arg h "$HEAD_SHA" --arg b "$BASE_SHA" \
-  '.pr = ((.pr // {}) + {number:$n, title:$t, repo:$r, headSha:$h, baseSha:$b})' \
-  "$REDUCED" > "$REDUCED.tmp" && mv "$REDUCED.tmp" "$REDUCED"
-if ! node "$HERE/validate.js" "$REDUCED"; then
+echo "· [3/5] enrich pr facts"
+enrich_pr "$REDUCED" "$PR" "$TITLE" "$REPO" "$HEAD_SHA" "$BASE_SHA"
+
+echo "· [4/5] ingest + validate"
+echo "· [5/5] render — $OUT/pr-$PR.html"
+if ! run_tail "$REDUCED" "$DIFF" "$OUT/pr-$PR.html"; then
   echo "❌ validation failed — not rendering." >&2
   exit 1
 fi
-
-echo "· [5/5] render — $OUT/pr-$PR.html"
-node "$HERE/generate.js" "$REDUCED" "$OUT/pr-$PR.html"
 echo "✓ walkthrough ready: $OUT/pr-$PR.html"

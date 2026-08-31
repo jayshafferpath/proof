@@ -33,6 +33,8 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=generator/lib.sh
+. "$HERE/generator/lib.sh"
 
 # ================================================================================
 # stack subcommand — compose a stacked-PR walkthrough from a manifest of
@@ -75,8 +77,8 @@ if [ "${1:-}" = "stack" ]; then
   # works the same locally and in CI (where GITHUB_REPOSITORY is set).
   if [ -z "$REPO" ]; then
     REPO="$(jq -r '.repo // empty' "$MANIFEST")"
-    [ -n "$REPO" ] || REPO="${GITHUB_REPOSITORY:-$(gh repo view --json nameWithOwner --jq .nameWithOwner)}"
   fi
+  REPO="$(resolve_repo "$REPO")"
 
   TMP="$(mktemp -d)"
   trap 'rm -rf "$TMP"' EXIT
@@ -114,17 +116,13 @@ if [ "${1:-}" = "stack" ]; then
       DIFF="$TMP/pr-$LAYER_PR.diff"
       META="$TMP/pr-$LAYER_PR.meta.json"
       echo "· [layer $i] PR #$LAYER_PR — gather → reduce → ingest → enrich"
-      gh pr view "$LAYER_PR" --repo "$REPO" \
-        --json number,title,baseRefName,baseRefOid,headRefName,headRefOid > "$META"
-      gh pr diff "$LAYER_PR" --repo "$REPO" > "$DIFF"
+      gather "$LAYER_PR" "$REPO" "$META" "$DIFF"
       HEAD_SHA="$(jq -r '.headRefOid' "$META")"
       BASE_SHA="$(jq -r '.baseRefOid' "$META")"
       TITLE="$(jq -r '.title' "$META")"
       node "$HERE/generator/reduce-ledger.js" "$LEDGER" "$REDUCED"
       node "$HERE/generator/ingest-diff.js" "$REDUCED" "$DIFF" "$REDUCED"
-      jq --arg n "$LAYER_PR" --arg t "$TITLE" --arg r "$REPO" --arg h "$HEAD_SHA" --arg b "$BASE_SHA" \
-        '.pr = ((.pr // {}) + {number:$n, title:$t, repo:$r, headSha:$h, baseSha:$b})' \
-        "$REDUCED" > "$REDUCED.tmp" && mv "$REDUCED.tmp" "$REDUCED"
+      enrich_pr "$REDUCED" "$LAYER_PR" "$TITLE" "$REPO" "$HEAD_SHA" "$BASE_SHA"
     else
       SPINE_REL="$(jq -r ".layers[$i].spine // empty" "$MANIFEST")"
       [ -n "$SPINE_REL" ] || { echo "❌ layer $i (#$LAYER_PR) has neither ledger nor spine" >&2; exit 2; }
@@ -142,7 +140,7 @@ if [ "${1:-}" = "stack" ]; then
   echo "· compose — proof.stack/v1"
   node "$HERE/generator/compose-stack.js" "$RUNTIME" "$STACK"
   echo "· validate"
-  if ! node "$HERE/validate.js" "$STACK"; then
+  if ! run_validate "$STACK"; then
     echo "❌ validation failed — not rendering." >&2
     exit 1
   fi
@@ -212,9 +210,7 @@ fi
 
 # Resolve repo from the current checkout when not given, so the script works the
 # same locally and in CI (where GITHUB_REPOSITORY is set).
-if [ -z "$REPO" ]; then
-  REPO="${GITHUB_REPOSITORY:-$(gh repo view --json nameWithOwner --jq .nameWithOwner)}"
-fi
+REPO="$(resolve_repo "$REPO")"
 
 TMP="$(mktemp -d)"
 cleanup() { [ "$KEEP_TMP" = 1 ] || rm -rf "$TMP"; }
@@ -228,10 +224,7 @@ META_JSON="$TMP/pr-$PR.meta.json"
 
 # --- 1. gather ----------------------------------------------------------------
 echo "· [1/5] gather — PR #$PR in $REPO"
-gh pr view "$PR" --repo "$REPO" \
-  --json number,title,body,headRefName,baseRefName,headRefOid,baseRefOid \
-  > "$META_JSON"
-gh pr diff "$PR" --repo "$REPO" > "$DIFF_PATCH"
+gather "$PR" "$REPO" "$META_JSON" "$DIFF_PATCH"
 
 HEAD_SHA="$(jq -r '.headRefOid' "$META_JSON")"
 BASE_SHA="$(jq -r '.baseRefOid' "$META_JSON")"
@@ -329,27 +322,19 @@ fi
 
 # Overwrite the pr object with resolved facts rather than trusting the model to
 # echo SHAs — citations pin to these, and a wrong SHA links to the wrong code.
-jq --arg n "$PR" --arg t "$TITLE" --arg r "$REPO" --arg h "$HEAD_SHA" --arg b "$BASE_SHA" \
-  '.pr = ((.pr // {}) + {number:$n, title:$t, repo:$r, headSha:$h, baseSha:$b})' \
-  "$DATA_JSON" > "$DATA_JSON.tmp" && mv "$DATA_JSON.tmp" "$DATA_JSON"
+enrich_pr "$DATA_JSON" "$PR" "$TITLE" "$REPO" "$HEAD_SHA" "$BASE_SHA"
 
-# --- 3. ingest diff -----------------------------------------------------------
+# --- 3. ingest · 4. validate · 5. render -------------------------------------
+OUT_HTML="$OUT/pr-$PR.html"
 echo "· [3/5] ingest — attribute diff lines to decisions"
-node "$HERE/generator/ingest-diff.js" "$DATA_JSON" "$DIFF_PATCH"
-
-# --- 4. validate --------------------------------------------------------------
 echo "· [4/5] validate — provenance + evidence + coverage"
-if ! node "$HERE/validate.js" "$DATA_JSON"; then
+echo "· [5/5] render — $OUT_HTML"
+if ! run_tail "$DATA_JSON" "$DIFF_PATCH" "$OUT_HTML"; then
   echo
   echo "❌ validation failed — not rendering. Fix the data/prompt and re-run." >&2
   # In CI this stdout becomes the PR comment body (see .github/workflows/proof.yml).
   exit 1
 fi
-
-# --- 5. render ----------------------------------------------------------------
-OUT_HTML="$OUT/pr-$PR.html"
-echo "· [5/5] render — $OUT_HTML"
-node "$HERE/generate.js" "$DATA_JSON" "$OUT_HTML"
 
 # Keep the ingested data next to the HTML so a hosted renderer or re-run can use it.
 cp "$DATA_JSON" "$OUT/data/pr-$PR.json" 2>/dev/null || cp "$DATA_JSON" "$OUT/pr-$PR.json"
