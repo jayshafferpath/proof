@@ -18,9 +18,18 @@
  * not where feature work is captured, and returning null is the single "be
  * inert" signal every hook checks — the guard that keeps capture from firing
  * for edits on main.
+ *
+ * `resolveActiveScope` adds the opt-in gate on top: a feature branch is only a
+ * *live* capture scope once its ledger exists (created by `/proof:decision-log
+ * start`, or by the first `propose`). Before that the branch resolves to a
+ * scope but is not armed, so the observe/approval hooks stay fully inert and
+ * never materialize a `.proof/` — capture is a deliberate act, not a side
+ * effect of editing any non-trunk branch.
  */
+const fs = require("fs");
 const path = require("path");
 const { execFileSync } = require("child_process");
+const { ledgerPath } = require("./ledger-paths");
 
 // Branches that are never a proof scope: shared history, not one PR's work.
 const TRUNK = new Set(["main", "master", "develop", "development", "trunk"]);
@@ -53,6 +62,22 @@ function resolveScope(cwd) {
   return { branch, ticket: deriveTicketFromBranch(branch) };
 }
 
+// Has this branch's ticket been opted into capture? The committed ledger's
+// existence is the opt-in marker: it appears only when someone ran
+// `/proof:decision-log start` or logged a decision, never from an edit alone.
+function isArmed(cwd, ticket) {
+  return fs.existsSync(ledgerPath(cwd, ticket));
+}
+
+// The scope a live-capture hook should act on: a feature branch that has
+// actually opted in. Null (be inert) on trunk, detached HEAD, or a feature
+// branch whose ledger doesn't exist yet.
+function resolveActiveScope(cwd) {
+  const scope = resolveScope(cwd);
+  if (!scope) return null;
+  return isArmed(cwd, scope.ticket) ? scope : null;
+}
+
 function scratchDir(cwd, ticket) {
   return path.join(cwd, ".proof", "scratch", ticket);
 }
@@ -78,6 +103,8 @@ module.exports = {
   deriveTicketFromBranch,
   currentBranch,
   resolveScope,
+  isArmed,
+  resolveActiveScope,
   scratchDir,
   observationsPath,
   attestPath,

@@ -1,5 +1,5 @@
 {
-  "description": "proof live decision capture — observe edits, record plan approvals, and reconcile open decisions before the turn ends. All three are inert outside a git repo / a project without .proof/, so enabling the plugin globally is safe.",
+  "description": "proof live decision capture — observe edits, record plan approvals, and reconcile open decisions before the turn ends. All three are opt-in: inert on trunk / detached HEAD, and on any feature branch until its ledger exists (created by /proof:decision-log start or a first propose). A branch nobody opts into gets no .proof/ and no capture, so enabling the plugin globally is safe.",
   "hooks": {
     "PostToolUse": [
       {

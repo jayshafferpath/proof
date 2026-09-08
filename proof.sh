@@ -69,7 +69,11 @@ if [ "${1:-}" = "stack" ]; then
 
   MANIFEST=""
   REPO=""
-  OUT="$HERE/prototype"
+  # Default output into the invoking repo's ./proof-out, not the install's
+  # prototype/ — renders belong next to the work being explained, and this
+  # matches where the /proof:* skills and retrofit.sh write. $PWD (not a bare
+  # relative path) survives the stack-mode `cd "$OUT"` absolutize step below.
+  OUT="$PWD/proof-out"
 
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -200,7 +204,9 @@ BACKEND="${PROOF_BACKEND:-}"
 MODEL="${ANTHROPIC_MODEL:-}"
 MAX_TOKENS="${PROOF_MAX_TOKENS:-16384}"
 PROMPT="$HERE/docs/generation-prompt.md"
-OUT="$HERE/prototype"
+# See stack mode above: renders default into the invoking repo's ./proof-out,
+# matching the /proof:* skills and retrofit.sh — not the install's prototype/.
+OUT="$PWD/proof-out"
 KEEP_TMP=0
 PR=""
 

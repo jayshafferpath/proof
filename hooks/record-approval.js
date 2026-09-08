@@ -18,8 +18,7 @@
 const fs = require("fs");
 const { execFileSync } = require("child_process");
 const { recordHumanAttestation } = require("../generator/ledger-cli");
-const { resolveScope, attestPath } = require("../generator/scope");
-const { ensureLedgerHeader } = require("../generator/ledger-paths");
+const { resolveActiveScope, attestPath } = require("../generator/scope");
 
 function readStdin() {
   return fs.readFileSync(0, "utf8");
@@ -44,9 +43,12 @@ function main() {
   // Use the payload's own cwd, not this hook process's — how Claude Code sets a
   // spawned hook's working directory isn't something to rely on. The scope (the
   // feature branch's ticket) is the branch's, not a sticky state.ticket that
-  // could be left over from another session; inert on trunk / detached HEAD.
+  // could be left over from another session; inert on trunk / detached HEAD, and
+  // on a branch that hasn't opted into capture (no ledger yet). An approval on an
+  // un-armed branch is simply not recorded — opt in first (`/proof:decision-log
+  // start`) if you want the plan approval to ground a later `confirm`.
   const cwd = input.cwd || process.cwd();
-  const scope = resolveScope(cwd);
+  const scope = resolveActiveScope(cwd);
   if (!scope) return;
 
   let commit;
@@ -57,7 +59,6 @@ function main() {
   }
 
   try {
-    ensureLedgerHeader(cwd, scope.ticket);
     recordHumanAttestation(attestPath(cwd, scope.ticket), {
       ticket: scope.ticket,
       kind: "confirm",

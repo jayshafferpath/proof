@@ -31,7 +31,10 @@ HERE="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 LEDGER=""
 PR=""
 REPO=""
-OUT="$HERE/prototype"
+# Default output into the invoking repo's ./proof-out, not the install's
+# prototype/ — matches proof.sh and the /proof:* skills so renders land next
+# to the work being explained rather than inside the install.
+OUT="$PWD/proof-out"
 
 while [ $# -gt 0 ]; do
   case "$1" in

@@ -16,9 +16,11 @@
  * Two guards, both load-bearing:
  *
  * 1. Inert with no ledger for this scope. If the branch's ledger doesn't exist
- *    yet, exit 0 — every repo/branch that hasn't logged a decision is
- *    unaffected. (The capture hooks bootstrap a header-only ledger, which has
- *    no open decisions, so this still returns cleanly.)
+ *    yet, exit 0 — every repo/branch that hasn't opted into capture is
+ *    unaffected. The ledger's existence is the opt-in (generator/scope.js's
+ *    resolveActiveScope uses the same signal), so a branch nobody armed is never
+ *    blocked; a branch that opted in but has only a header has no open decisions
+ *    and still returns cleanly.
  *
  * 2. A self-built re-entrancy cap. Whether this Claude Code install provides a
  *    documented "stop_hook_active"-style field to detect a hook re-triggering
