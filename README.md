@@ -18,16 +18,53 @@ quality, or suggest improvements.
   - `aws` CLI with Bedrock access
   - `opencode` CLI, authenticated (`opencode auth login`)
 
+## Installation
+
+Install proof so its commands are on your `PATH`:
+
+```sh
+npm install -g /path/to/proof     # from a local checkout
+npm install -g <git-url>          # or straight from git
+```
+
+This adds three commands:
+
+| command | wraps | use |
+| --- | --- | --- |
+| `proof <pr-number>` | `proof.sh` | full gather → generate → render pipeline |
+| `proof-render <data.json> [out.html]` | `generate.js` | render a walkthrough JSON to self-contained HTML |
+| `proof-retrofit <ledger.jsonl> <pr> --repo <r> --out <dir>` | `retrofit.sh` | ledger + PR diff → HTML (needs `gh`) |
+
+The commands resolve their own install location, so the vendored EJS, templates, and schemas
+travel with them — no `npm install` step, no `PROOF_HOME`. When you run `proof` or
+`proof-retrofit` from another repo, pass `--out ./proof-out`; their default output directory
+sits inside the install, not your current repo. Likewise give `proof-render` an explicit
+`out.html`, or it writes next to the input JSON.
+
+To drive proof from inside Claude Code (the `/proof:*` skills), also install it as a plugin —
+the whole checkout **is** the plugin, so its scripts travel with it:
+
+```sh
+/plugin marketplace add /path/to/proof     # run inside Claude Code
+/plugin install proof@proof
+
+claude --plugin-dir /path/to/proof         # or a one-session dev load, from the shell
+```
+
+The skills resolve their scripts via `${CLAUDE_PLUGIN_ROOT}` and write the ledger + HTML to
+`./proof-out/` in whatever repo you invoke them from.
+
 ## Usage
 
 Generate a walkthrough for a pull request:
 
 ```sh
-./proof.sh <pr-number> [--repo owner/name]
+proof <pr-number> [--repo owner/name]     # ./proof.sh from a checkout
 ```
 
 The repo defaults to the current checkout (or `$GITHUB_REPOSITORY` in CI). Output is written
-to `prototype/pr-<n>.html`, which opens in any browser with no server or build step.
+to `<out>/pr-<n>.html` (default `prototype/` in a checkout — pass `--out ./proof-out` when
+installed), which opens in any browser with no server or build step.
 
 ### Flags
 
@@ -155,22 +192,8 @@ drift), attributes it, enriches `pr` with live repo/base/head SHAs, validates ag
 Behaviour is absent until decisions carry runtime steps (live capture). Contracts and the
 machine-readable schemas live in `docs/contracts.md` and `schemas/`.
 
-To use `/proof:retrofit-ledger` from any repo, install proof as a Claude Code plugin. The
-whole checkout **is** the plugin, so its scripts travel with it — no `PROOF_HOME`, no reachable
-checkout to point back at:
-
-```sh
-# persistent install — run these inside Claude Code, pointing at this checkout:
-/plugin marketplace add /path/to/proof
-/plugin install proof@proof
-
-# or a one-session dev load, from the shell:
-claude --plugin-dir /path/to/proof
-```
-
-The skill resolves its scripts via `${CLAUDE_PLUGIN_ROOT}` (Claude Code substitutes the plugin's
-install path into the skill content) and writes the ledger + HTML to `./proof-out/` in whatever
-repo you invoke it from.
+Run this as `proof-retrofit` once installed (see [Installation](#installation)); from inside
+Claude Code, the `/proof:retrofit-ledger` skill produces the ledger and renders it in one step.
 
 ## Stacks — one walkthrough for a chain of PRs
 

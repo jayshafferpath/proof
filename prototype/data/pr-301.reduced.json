@@ -1,0 +1,3883 @@
+{
+  "contract": "proof.spine/v2",
+  "pr": {
+    "number": "301",
+    "ticket": "devdash-internal-api-phase5b",
+    "title": "feat(api): add internal cohort-preview endpoint",
+    "repo": "pathccm/attribution-service",
+    "headSha": "f56036c3dd1ace7ac98fcaefd0ed7295690e60ec",
+    "baseSha": "7ec62ee1e5bc6517a6640ef7e48701145764aaff"
+  },
+  "decisions": [
+    {
+      "id": "d1",
+      "title": "Cohort preview is read-only: calls resolveCohort with no onPageFetched",
+      "chose": "GET /internal/practice-reports/cohort-preview backs onto the shared resolveCohort/evaluateGuards from @attribution-service/practice-cohort (extracted in #300), calling resolveCohort with no onPageFetched argument.",
+      "rejected": "Passing a callback that emits its own dashboard-scoped metric.",
+      "why": "Omitting the callback is the mechanism by which a read-only preview has no code path to move a batch counter, per the callback boundary #300 built.",
+      "ac": [
+        "CP-1",
+        "CP-5"
+      ],
+      "isReject": false,
+      "provenance": "through-review",
+      "provenanceTrail": [
+        {
+          "seq": 1,
+          "event": "realize",
+          "by": "retrofit",
+          "phase": "execute"
+        },
+        {
+          "seq": 2,
+          "event": "verify",
+          "by": "retrofit",
+          "phase": "review",
+          "reason": "Mutation-checked: giving the preview an onPageFetched that emits batch.cohort.page_fetched fails the zero-batch-metrics test exactly."
+        },
+        {
+          "seq": 5,
+          "event": "close",
+          "by": "retrofit",
+          "phase": "review",
+          "reason": "apps/api suite green (403 tests, 26 files); build + biome clean; openapi-lint at the 6-warning baseline, no new warnings."
+        }
+      ],
+      "history": [],
+      "evidence": [
+        {
+          "kind": "anchor",
+          "code": {
+            "file": "apps/api/src/service/cohort-preview-service.ts",
+            "lines": "1-42",
+            "hl": [],
+            "context": false
+          }
+        },
+        {
+          "kind": "anchor",
+          "code": {
+            "file": "packages/practice-cohort/src/cohort.ts",
+            "lines": "1-31",
+            "hl": [],
+            "context": true
+          }
+        },
+        {
+          "kind": "anchor",
+          "code": {
+            "file": "packages/practice-cohort/src/guards.ts",
+            "lines": "1-24",
+            "hl": [],
+            "context": true
+          }
+        }
+      ],
+      "tests": []
+    },
+    {
+      "id": "d2",
+      "title": "optOutVerified: false makes the opt-out gap machine-readable",
+      "chose": "The response always sets optOutVerified: false; tests assert both zero OPTED_OUT entries and the flag present and false.",
+      "rejected": "Omitting the field, or leaving OPTED_OUT reachable in the schema without comment.",
+      "why": "isPracticeOptedOut reads practice.optedOut, which PracticeEntity does not declare (NEV-1412 Wont Fix), so OPTED_OUT can never fire; the response says so rather than implying it checked.",
+      "ac": [
+        "CP-6"
+      ],
+      "isReject": false,
+      "provenance": "reconstructed",
+      "provenanceTrail": [
+        {
+          "seq": 3,
+          "event": "realize",
+          "by": "retrofit",
+          "phase": "execute"
+        }
+      ],
+      "history": [],
+      "evidence": [
+        {
+          "kind": "anchor",
+          "code": {
+            "file": "apps/api/src/service/cohort-preview-service.ts",
+            "lines": "1-42",
+            "hl": [],
+            "context": false
+          }
+        },
+        {
+          "kind": "anchor",
+          "code": {
+            "file": "docs/openapi-internal.yaml",
+            "lines": "259-301",
+            "hl": [],
+            "context": false
+          }
+        }
+      ],
+      "tests": []
+    },
+    {
+      "id": "d3",
+      "title": "Multi-page coverage test seeds past the pagination boundary",
+      "chose": "The pagination test seeds 105 practices against a page size of 100 so the request actually crosses a page boundary.",
+      "rejected": "Seeding fewer than 100 for a faster single-page test.",
+      "why": "Fewer practices would pass without ever paginating past page one; seeding past the boundary is what exercises the real multi-page path.",
+      "ac": [
+        "CP-8"
+      ],
+      "isReject": false,
+      "provenance": "reconstructed",
+      "provenanceTrail": [
+        {
+          "seq": 4,
+          "event": "realize",
+          "by": "retrofit",
+          "phase": "execute"
+        }
+      ],
+      "history": [],
+      "evidence": [
+        {
+          "kind": "anchor",
+          "code": {
+            "file": "apps/api/src/__tests__/routes/internal-cohort-preview.test.ts",
+            "lines": "184-195",
+            "hl": [],
+            "context": false
+          }
+        }
+      ],
+      "tests": []
+    }
+  ],
+  "coverage": {
+    "explained": [
+      {
+        "file": "apps/api/src/service/cohort-preview-service.ts",
+        "byDecisions": [
+          "d1",
+          "d2"
+        ]
+      },
+      {
+        "file": "docs/openapi-internal.yaml",
+        "byDecisions": [
+          "d2"
+        ]
+      },
+      {
+        "file": "apps/api/src/__tests__/routes/internal-cohort-preview.test.ts",
+        "byDecisions": [
+          "d3"
+        ]
+      }
+    ],
+    "tests": []
+  },
+  "ledgerMeta": {
+    "ticket": "devdash-internal-api-phase5b",
+    "events": 5,
+    "closed": {
+      "seq": 5,
+      "reason": "apps/api suite green (403 tests, 26 files); build + biome clean; openapi-lint at the 6-warning baseline, no new warnings."
+    }
+  },
+  "diff": [
+    {
+      "file": "Dockerfile",
+      "bucket": null,
+      "byDecisions": [],
+      "hunks": [
+        {
+          "header": "@@ -67,6 +67,7 @@",
+          "lines": [
+            {
+              "old": 67,
+              "new": 67,
+              "sign": " ",
+              "text": "COPY --from=build /app/packages/patient-domain-client/dist /app/packages/patient-domain-client/dist",
+              "decision": null
+            },
+            {
+              "old": 68,
+              "new": 68,
+              "sign": " ",
+              "text": "COPY --from=build /app/packages/provider-data-store-client/dist /app/packages/provider-data-store-client/dist",
+              "decision": null
+            },
+            {
+              "old": 69,
+              "new": 69,
+              "sign": " ",
+              "text": "COPY --from=build /app/packages/marketing-client/dist /app/packages/marketing-client/dist",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 70,
+              "sign": "+",
+              "text": "COPY --from=build /app/packages/practice-cohort/dist /app/packages/practice-cohort/dist",
+              "decision": null
+            },
+            {
+              "old": 70,
+              "new": 71,
+              "sign": " ",
+              "text": "COPY --from=build /app/packages/prospect-service-client/dist /app/packages/prospect-service-client/dist",
+              "decision": null
+            },
+            {
+              "old": 71,
+              "new": 72,
+              "sign": " ",
+              "text": "COPY --from=build /app/packages/scheduling-client/dist /app/packages/scheduling-client/dist",
+              "decision": null
+            },
+            {
+              "old": 72,
+              "new": 73,
+              "sign": " ",
+              "text": "COPY --from=build /app/packages/pdf-renderer/dist /app/packages/pdf-renderer/dist",
+              "decision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/api/package.json",
+      "bucket": null,
+      "byDecisions": [],
+      "hunks": [
+        {
+          "header": "@@ -29,6 +29,7 @@",
+          "lines": [
+            {
+              "old": 29,
+              "new": 29,
+              "sign": " ",
+              "text": "    \"@attribution-service/patient-domain-client\": \"workspace:^\",",
+              "decision": null
+            },
+            {
+              "old": 30,
+              "new": 30,
+              "sign": " ",
+              "text": "    \"@attribution-service/marketing-client\": \"workspace:^\",",
+              "decision": null
+            },
+            {
+              "old": 31,
+              "new": 31,
+              "sign": " ",
+              "text": "    \"@attribution-service/pdf-renderer\": \"workspace:^\",",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 32,
+              "sign": "+",
+              "text": "    \"@attribution-service/practice-cohort\": \"workspace:^\",",
+              "decision": null
+            },
+            {
+              "old": 32,
+              "new": 33,
+              "sign": " ",
+              "text": "    \"@attribution-service/prospect-service-client\": \"workspace:^\",",
+              "decision": null
+            },
+            {
+              "old": 33,
+              "new": 34,
+              "sign": " ",
+              "text": "    \"@attribution-service/provider-data-store-client\": \"workspace:^\",",
+              "decision": null
+            },
+            {
+              "old": 34,
+              "new": 35,
+              "sign": " ",
+              "text": "    \"@attribution-service/reporting\": \"workspace:^\",",
+              "decision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/__tests__/routes/internal-auth-matrix.test.ts",
+      "bucket": null,
+      "byDecisions": [],
+      "hunks": [
+        {
+          "header": "@@ -66,6 +66,7 @@",
+          "lines": [
+            {
+              "old": 66,
+              "new": 66,
+              "sign": " ",
+              "text": "      \"DELETE /internal/practices/{practiceId}\",",
+              "decision": null
+            },
+            {
+              "old": 67,
+              "new": 67,
+              "sign": " ",
+              "text": "      \"GET /internal/pcp-referrals\",",
+              "decision": null
+            },
+            {
+              "old": 68,
+              "new": 68,
+              "sign": " ",
+              "text": "      \"GET /internal/pcp-referrals/{referralId}\",",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 69,
+              "sign": "+",
+              "text": "      \"GET /internal/practice-reports/cohort-preview\",",
+              "decision": null
+            },
+            {
+              "old": 69,
+              "new": 70,
+              "sign": " ",
+              "text": "      \"GET /internal/practices\",",
+              "decision": null
+            },
+            {
+              "old": 70,
+              "new": 71,
+              "sign": " ",
+              "text": "      \"GET /internal/practices/{practiceId}\",",
+              "decision": null
+            },
+            {
+              "old": 71,
+              "new": 72,
+              "sign": " ",
+              "text": "      \"PATCH /internal/pcp-referrals/{referralId}\",",
+              "decision": null
+            }
+          ]
+        },
+        {
+          "header": "@@ -76,6 +77,7 @@",
+          "lines": [
+            {
+              "old": 76,
+              "new": 77,
+              "sign": " ",
+              "text": "    expect(preflight.map((o) => `${o.method} ${o.url}`).sort()).toEqual([",
+              "decision": null
+            },
+            {
+              "old": 77,
+              "new": 78,
+              "sign": " ",
+              "text": "      \"OPTIONS /internal/pcp-referrals\",",
+              "decision": null
+            },
+            {
+              "old": 78,
+              "new": 79,
+              "sign": " ",
+              "text": "      \"OPTIONS /internal/pcp-referrals/{referralId}\",",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 80,
+              "sign": "+",
+              "text": "      \"OPTIONS /internal/practice-reports/cohort-preview\",",
+              "decision": null
+            },
+            {
+              "old": 79,
+              "new": 81,
+              "sign": " ",
+              "text": "      \"OPTIONS /internal/practices\",",
+              "decision": null
+            },
+            {
+              "old": 80,
+              "new": 82,
+              "sign": " ",
+              "text": "      \"OPTIONS /internal/practices/{practiceId}\",",
+              "decision": null
+            },
+            {
+              "old": 81,
+              "new": 83,
+              "sign": " ",
+              "text": "    ]);",
+              "decision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/__tests__/routes/internal-cohort-preview.test.ts",
+      "bucket": "explained",
+      "byDecisions": [
+        "d3"
+      ],
+      "hunks": [
+        {
+          "header": "@@ -0,0 +1,145 @@",
+          "lines": [
+            {
+              "old": null,
+              "new": 1,
+              "sign": "+",
+              "text": "import { clearAllItems, practiceRepository } from \"@attribution-service/data\";",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 2,
+              "sign": "+",
+              "text": "import { afterEach, describe, expect, test, vi } from \"vitest\";",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 3,
+              "sign": "+",
+              "text": "import { stats } from \"../../components\";",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 4,
+              "sign": "+",
+              "text": "import { useServerHelper } from \"../util\";",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 5,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 6,
+              "sign": "+",
+              "text": "vi.mock(\"../../config\");",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 7,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 8,
+              "sign": "+",
+              "text": "const AUTH_HEADER = { authorization: \"Bearer valid-test-key\" };",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 9,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 10,
+              "sign": "+",
+              "text": "const seedPractice = (",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 11,
+              "sign": "+",
+              "text": "  id: string,",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 12,
+              "sign": "+",
+              "text": "  overrides: { status?: \"SOLD\" | \"CHURNED\"; practiceEmail?: string } = {},",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 13,
+              "sign": "+",
+              "text": ") =>",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 14,
+              "sign": "+",
+              "text": "  practiceRepository.upsertPractice({",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 15,
+              "sign": "+",
+              "text": "    id,",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 16,
+              "sign": "+",
+              "text": "    name: `Practice ${id}`,",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 17,
+              "sign": "+",
+              "text": "    status: overrides.status ?? \"SOLD\",",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 18,
+              "sign": "+",
+              "text": "    accountManager: \"Jordan Lee\",",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 19,
+              "sign": "+",
+              "text": "    ...(overrides.practiceEmail !== undefined && { practiceEmail: overrides.practiceEmail }),",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 20,
+              "sign": "+",
+              "text": "  });",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 21,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 22,
+              "sign": "+",
+              "text": "describe(\"GET /internal/practice-reports/cohort-preview\", () => {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 23,
+              "sign": "+",
+              "text": "  const serverHelper = useServerHelper();",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 24,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 25,
+              "sign": "+",
+              "text": "  afterEach(async () => {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 26,
+              "sign": "+",
+              "text": "    await clearAllItems();",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 27,
+              "sign": "+",
+              "text": "  });",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 28,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 29,
+              "sign": "+",
+              "text": "  const preview = () =>",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 30,
+              "sign": "+",
+              "text": "    serverHelper.getServer().inject({",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 31,
+              "sign": "+",
+              "text": "      method: \"GET\",",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 32,
+              "sign": "+",
+              "text": "      url: \"/internal/practice-reports/cohort-preview\",",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 33,
+              "sign": "+",
+              "text": "      headers: AUTH_HEADER,",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 34,
+              "sign": "+",
+              "text": "    });",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 35,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 36,
+              "sign": "+",
+              "text": "  test(\"selects only SOLD practices\", async () => {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 37,
+              "sign": "+",
+              "text": "    await seedPractice(\"SOLD-1\", { practiceEmail: \"a@example.com\" });",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 38,
+              "sign": "+",
+              "text": "    await seedPractice(\"CHURNED-1\", { status: \"CHURNED\", practiceEmail: \"b@example.com\" });",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 39,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 40,
+              "sign": "+",
+              "text": "    const body = (await preview()).json();",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 41,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 42,
+              "sign": "+",
+              "text": "    expect(body.cohortSize).toBe(1);",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 43,
+              "sign": "+",
+              "text": "    expect(body.proceedCount).toBe(1);",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 44,
+              "sign": "+",
+              "text": "  });",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 45,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 46,
+              "sign": "+",
+              "text": "  test(\"reports a practice without practiceEmail as skipped NO_PRACTICE_CONTACT_EMAIL\", async () => {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 47,
+              "sign": "+",
+              "text": "    await seedPractice(\"NO-EMAIL\");",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 48,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 49,
+              "sign": "+",
+              "text": "    const body = (await preview()).json();",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 50,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 51,
+              "sign": "+",
+              "text": "    expect(body.skipped).toEqual([",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 52,
+              "sign": "+",
+              "text": "      {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 53,
+              "sign": "+",
+              "text": "        practiceId: \"NO-EMAIL\",",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 54,
+              "sign": "+",
+              "text": "        practiceName: \"Practice NO-EMAIL\",",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 55,
+              "sign": "+",
+              "text": "        reason: \"NO_PRACTICE_CONTACT_EMAIL\",",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 56,
+              "sign": "+",
+              "text": "      },",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 57,
+              "sign": "+",
+              "text": "    ]);",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 58,
+              "sign": "+",
+              "text": "    expect(body.proceedCount).toBe(0);",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 59,
+              "sign": "+",
+              "text": "  });",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 60,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 61,
+              "sign": "+",
+              "text": "  test(\"treats a whitespace-only practiceEmail as absent\", async () => {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 62,
+              "sign": "+",
+              "text": "    await seedPractice(\"BLANK-EMAIL\", { practiceEmail: \"   \" });",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 63,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 64,
+              "sign": "+",
+              "text": "    const body = (await preview()).json();",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 65,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 66,
+              "sign": "+",
+              "text": "    expect(body.skipped[0].reason).toBe(\"NO_PRACTICE_CONTACT_EMAIL\");",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 67,
+              "sign": "+",
+              "text": "  });",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 68,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 69,
+              "sign": "+",
+              "text": "  test(\"reports a practice with a valid email as proceeding\", async () => {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 70,
+              "sign": "+",
+              "text": "    await seedPractice(\"GOOD-1\", { practiceEmail: \"front-desk@example.com\" });",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 71,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 72,
+              "sign": "+",
+              "text": "    const body = (await preview()).json();",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 73,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 74,
+              "sign": "+",
+              "text": "    expect(body.proceedCount).toBe(1);",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 75,
+              "sign": "+",
+              "text": "    expect(body.skipped).toEqual([]);",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 76,
+              "sign": "+",
+              "text": "  });",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 77,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 78,
+              "sign": "+",
+              "text": "  test(\"carries cohort size, proceed count, and the skip list together\", async () => {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 79,
+              "sign": "+",
+              "text": "    await seedPractice(\"GOOD-1\", { practiceEmail: \"a@example.com\" });",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 80,
+              "sign": "+",
+              "text": "    await seedPractice(\"GOOD-2\", { practiceEmail: \"b@example.com\" });",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 81,
+              "sign": "+",
+              "text": "    await seedPractice(\"BAD-1\");",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 82,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 83,
+              "sign": "+",
+              "text": "    const res = await preview();",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 84,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 85,
+              "sign": "+",
+              "text": "    expect(res.statusCode).toBe(200);",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 86,
+              "sign": "+",
+              "text": "    expect(res.json()).toMatchObject({",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 87,
+              "sign": "+",
+              "text": "      cohortSize: 3,",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 88,
+              "sign": "+",
+              "text": "      proceedCount: 2,",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 89,
+              "sign": "+",
+              "text": "      optOutVerified: false,",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 90,
+              "sign": "+",
+              "text": "    });",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 91,
+              "sign": "+",
+              "text": "    expect(res.json().skipped).toHaveLength(1);",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 92,
+              "sign": "+",
+              "text": "  });",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 93,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 94,
+              "sign": "+",
+              "text": "  test(\"emits no Datadog counter or gauge — a preview must not move batch metrics\", async () => {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 95,
+              "sign": "+",
+              "text": "    await seedPractice(\"GOOD-1\", { practiceEmail: \"a@example.com\" });",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 96,
+              "sign": "+",
+              "text": "    await seedPractice(\"BAD-1\");",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 97,
+              "sign": "+",
+              "text": "    const counterSpy = vi.spyOn(stats, \"sendCounter\").mockResolvedValue(undefined);",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 98,
+              "sign": "+",
+              "text": "    const gaugeSpy = vi.spyOn(stats, \"sendGauge\").mockResolvedValue(undefined);",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 99,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 100,
+              "sign": "+",
+              "text": "    try {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 101,
+              "sign": "+",
+              "text": "      const res = await preview();",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 102,
+              "sign": "+",
+              "text": "      expect(res.statusCode).toBe(200);",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 103,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 104,
+              "sign": "+",
+              "text": "      const batchCalls = [...counterSpy.mock.calls, ...gaugeSpy.mock.calls].filter(([metric]) =>",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 105,
+              "sign": "+",
+              "text": "        String(metric).startsWith(\"batch.\"),",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 106,
+              "sign": "+",
+              "text": "      );",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 107,
+              "sign": "+",
+              "text": "      expect(batchCalls).toEqual([]);",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 108,
+              "sign": "+",
+              "text": "    } finally {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 109,
+              "sign": "+",
+              "text": "      counterSpy.mockRestore();",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 110,
+              "sign": "+",
+              "text": "      gaugeSpy.mockRestore();",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 111,
+              "sign": "+",
+              "text": "    }",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 112,
+              "sign": "+",
+              "text": "  });",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 113,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 114,
+              "sign": "+",
+              "text": "  test(\"writes no PracticeReportPublished ledger row\", async () => {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 115,
+              "sign": "+",
+              "text": "    await seedPractice(\"GOOD-1\", { practiceEmail: \"a@example.com\" });",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 116,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 117,
+              "sign": "+",
+              "text": "    await preview();",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 118,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 119,
+              "sign": "+",
+              "text": "    // A published row would appear as a new item beyond the seeded practice.",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 120,
+              "sign": "+",
+              "text": "    const practices = await practiceRepository.listPractices(100);",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 121,
+              "sign": "+",
+              "text": "    expect(practices.practices.map((p) => p.id)).toEqual([\"GOOD-1\"]);",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 122,
+              "sign": "+",
+              "text": "  });",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 123,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 124,
+              "sign": "+",
+              "text": "  test(\"reports OPTED_OUT for zero practices and surfaces the unverified caveat\", async () => {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 125,
+              "sign": "+",
+              "text": "    await seedPractice(\"GOOD-1\", { practiceEmail: \"a@example.com\" });",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 126,
+              "sign": "+",
+              "text": "    await seedPractice(\"BAD-1\");",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 127,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 128,
+              "sign": "+",
+              "text": "    const body = (await preview()).json();",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 129,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 130,
+              "sign": "+",
+              "text": "    expect(body.skipped.filter((s: { reason: string }) => s.reason === \"OPTED_OUT\")).toEqual([]);",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 131,
+              "sign": "+",
+              "text": "    expect(body.optOutVerified).toBe(false);",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 132,
+              "sign": "+",
+              "text": "  });",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 133,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 134,
+              "sign": "+",
+              "text": "  test(\"enumerates a cohort spanning multiple pages\", async () => {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 135,
+              "sign": "+",
+              "text": "    // resolveCohort pages at 100, so this must exceed one page to prove the",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 136,
+              "sign": "+",
+              "text": "    // preview covers the whole cohort rather than just the first page.",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 137,
+              "sign": "+",
+              "text": "    const ids = Array.from({ length: 105 }, (_, i) => `P-${String(i).padStart(3, \"0\")}`);",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 138,
+              "sign": "+",
+              "text": "    await Promise.all(ids.map((id) => seedPractice(id, { practiceEmail: `${id}@example.com` })));",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 139,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 140,
+              "sign": "+",
+              "text": "    const body = (await preview()).json();",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 141,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 142,
+              "sign": "+",
+              "text": "    expect(body.cohortSize).toBe(105);",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 143,
+              "sign": "+",
+              "text": "    expect(body.proceedCount).toBe(105);",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 144,
+              "sign": "+",
+              "text": "  });",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 145,
+              "sign": "+",
+              "text": "});",
+              "decision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/__tests__/routes/internal-spec-contract.test.ts",
+      "bucket": null,
+      "byDecisions": [],
+      "hunks": [
+        {
+          "header": "@@ -67,12 +67,14 @@",
+          "lines": [
+            {
+              "old": 67,
+              "new": 67,
+              "sign": " ",
+              "text": "      \"deleteAllPractices\",",
+              "decision": null
+            },
+            {
+              "old": 68,
+              "new": 68,
+              "sign": " ",
+              "text": "      \"deletePcpReferral\",",
+              "decision": null
+            },
+            {
+              "old": 69,
+              "new": 69,
+              "sign": " ",
+              "text": "      \"deletePractice\",",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 70,
+              "sign": "+",
+              "text": "      \"getCohortPreview\",",
+              "decision": null
+            },
+            {
+              "old": 70,
+              "new": 71,
+              "sign": " ",
+              "text": "      \"getInternalPcpReferral\",",
+              "decision": null
+            },
+            {
+              "old": 71,
+              "new": 72,
+              "sign": " ",
+              "text": "      \"getInternalPractice\",",
+              "decision": null
+            },
+            {
+              "old": 72,
+              "new": 73,
+              "sign": " ",
+              "text": "      \"listInternalPcpReferrals\",",
+              "decision": null
+            },
+            {
+              "old": 73,
+              "new": 74,
+              "sign": " ",
+              "text": "      \"listInternalPractices\",",
+              "decision": null
+            },
+            {
+              "old": 74,
+              "new": 75,
+              "sign": " ",
+              "text": "      \"optionsInternalPcpReferrals\",",
+              "decision": null
+            },
+            {
+              "old": 75,
+              "new": 76,
+              "sign": " ",
+              "text": "      \"optionsInternalPcpReferralsReferralId\",",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 77,
+              "sign": "+",
+              "text": "      \"optionsInternalPracticeReportsCohortPreview\",",
+              "decision": null
+            },
+            {
+              "old": 76,
+              "new": 78,
+              "sign": " ",
+              "text": "      \"optionsInternalPractices\",",
+              "decision": null
+            },
+            {
+              "old": 77,
+              "new": 79,
+              "sign": " ",
+              "text": "      \"optionsInternalPracticesPracticeId\",",
+              "decision": null
+            },
+            {
+              "old": 78,
+              "new": 80,
+              "sign": " ",
+              "text": "      \"updatePcpReferral\",",
+              "decision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/generated/internal-route-handler-types.ts",
+      "bucket": null,
+      "byDecisions": [],
+      "hunks": [
+        {
+          "header": "@@ -42,6 +42,8 @@",
+          "lines": [
+            {
+              "old": 42,
+              "new": 42,
+              "sign": " ",
+              "text": "export type DeletePcpReferralRouteHandler = RouteHandler<'deletePcpReferral'>",
+              "decision": null
+            },
+            {
+              "old": 43,
+              "new": 43,
+              "sign": " ",
+              "text": "export type OptionsInternalPcpReferralsReferralIdRouteHandler = RouteHandler<'optionsInternalPcpReferralsReferralId'>",
+              "decision": null
+            },
+            {
+              "old": 44,
+              "new": 44,
+              "sign": " ",
+              "text": "export type UpdatePcpReferralRouteHandler = RouteHandler<'updatePcpReferral'>",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 45,
+              "sign": "+",
+              "text": "export type GetCohortPreviewRouteHandler = RouteHandler<'getCohortPreview'>",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 46,
+              "sign": "+",
+              "text": "export type OptionsInternalPracticeReportsCohortPreviewRouteHandler = RouteHandler<'optionsInternalPracticeReportsCohortPreview'>",
+              "decision": null
+            },
+            {
+              "old": 45,
+              "new": 47,
+              "sign": " ",
+              "text": "export type ListInternalPracticesRouteHandler = RouteHandler<'listInternalPractices'>",
+              "decision": null
+            },
+            {
+              "old": 46,
+              "new": 48,
+              "sign": " ",
+              "text": "export type CreatePracticeRouteHandler = RouteHandler<'createPractice'>",
+              "decision": null
+            },
+            {
+              "old": 47,
+              "new": 49,
+              "sign": " ",
+              "text": "export type DeleteAllPracticesRouteHandler = RouteHandler<'deleteAllPractices'>",
+              "decision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/generated/internal-types.ts",
+      "bucket": null,
+      "byDecisions": [],
+      "hunks": [
+        {
+          "header": "@@ -71,6 +71,31 @@",
+          "lines": [
+            {
+              "old": 71,
+              "new": 71,
+              "sign": " ",
+              "text": "        patch: operations[\"updatePcpReferral\"];",
+              "decision": null
+            },
+            {
+              "old": 72,
+              "new": 72,
+              "sign": " ",
+              "text": "        trace?: never;",
+              "decision": null
+            },
+            {
+              "old": 73,
+              "new": 73,
+              "sign": " ",
+              "text": "    };",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 74,
+              "sign": "+",
+              "text": "    \"/internal/practice-reports/cohort-preview\": {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 75,
+              "sign": "+",
+              "text": "        parameters: {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 76,
+              "sign": "+",
+              "text": "            query?: never;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 77,
+              "sign": "+",
+              "text": "            header?: never;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 78,
+              "sign": "+",
+              "text": "            path?: never;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 79,
+              "sign": "+",
+              "text": "            cookie?: never;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 80,
+              "sign": "+",
+              "text": "        };",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 81,
+              "sign": "+",
+              "text": "        /**",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 82,
+              "sign": "+",
+              "text": "         * Preview the monthly batch cohort",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 83,
+              "sign": "+",
+              "text": "         * @description Read-only. Resolves the cohort exactly as the monthly batch would and reports, per practice, whether it would proceed or be skipped and why. Renders no PDF, writes no ledger row, stages nothing to S3, sends no email, and emits no batch metric.",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 84,
+              "sign": "+",
+              "text": "         *     The opt-out guard is evaluated against an attribute the practice entity does not declare, so it can never report OPTED_OUT. optOutVerified is false to make that explicit — a preview must not imply it checked opt-out status.",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 85,
+              "sign": "+",
+              "text": "         */",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 86,
+              "sign": "+",
+              "text": "        get: operations[\"getCohortPreview\"];",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 87,
+              "sign": "+",
+              "text": "        put?: never;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 88,
+              "sign": "+",
+              "text": "        post?: never;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 89,
+              "sign": "+",
+              "text": "        delete?: never;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 90,
+              "sign": "+",
+              "text": "        /**",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 91,
+              "sign": "+",
+              "text": "         * CORS preflight",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 92,
+              "sign": "+",
+              "text": "         * @description Auto-generated preflight operation for Kong routing.",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 93,
+              "sign": "+",
+              "text": "         */",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 94,
+              "sign": "+",
+              "text": "        options: operations[\"optionsInternalPracticeReportsCohortPreview\"];",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 95,
+              "sign": "+",
+              "text": "        head?: never;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 96,
+              "sign": "+",
+              "text": "        patch?: never;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 97,
+              "sign": "+",
+              "text": "        trace?: never;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 98,
+              "sign": "+",
+              "text": "    };",
+              "decision": null
+            },
+            {
+              "old": 74,
+              "new": 99,
+              "sign": " ",
+              "text": "    \"/internal/practices\": {",
+              "decision": null
+            },
+            {
+              "old": 75,
+              "new": 100,
+              "sign": " ",
+              "text": "        parameters: {",
+              "decision": null
+            },
+            {
+              "old": 76,
+              "new": 101,
+              "sign": " ",
+              "text": "            query?: never;",
+              "decision": null
+            }
+          ]
+        },
+        {
+          "header": "@@ -240,6 +265,31 @@",
+          "lines": [
+            {
+              "old": 240,
+              "new": 265,
+              "sign": " ",
+              "text": "            /** Format: date */",
+              "decision": null
+            },
+            {
+              "old": 241,
+              "new": 266,
+              "sign": " ",
+              "text": "            lastReferralDate?: string;",
+              "decision": null
+            },
+            {
+              "old": 242,
+              "new": 267,
+              "sign": " ",
+              "text": "        };",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 268,
+              "sign": "+",
+              "text": "        /**",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 269,
+              "sign": "+",
+              "text": "         * @description Why the batch would skip a practice.",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 270,
+              "sign": "+",
+              "text": "         * @enum {string}",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 271,
+              "sign": "+",
+              "text": "         */",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 272,
+              "sign": "+",
+              "text": "        SkipReason: \"NO_PRACTICE_CONTACT_EMAIL\" | \"OPTED_OUT\" | \"BELOW_REFERRAL_FLOOR\";",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 273,
+              "sign": "+",
+              "text": "        CohortPreviewSkip: {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 274,
+              "sign": "+",
+              "text": "            practiceId: string;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 275,
+              "sign": "+",
+              "text": "            practiceName: string;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 276,
+              "sign": "+",
+              "text": "            reason: components[\"schemas\"][\"SkipReason\"];",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 277,
+              "sign": "+",
+              "text": "        };",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 278,
+              "sign": "+",
+              "text": "        CohortPreviewResponse: {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 279,
+              "sign": "+",
+              "text": "            /**",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 280,
+              "sign": "+",
+              "text": "             * Format: int32",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 281,
+              "sign": "+",
+              "text": "             * @description Total SOLD practices selected, across every page.",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 282,
+              "sign": "+",
+              "text": "             */",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 283,
+              "sign": "+",
+              "text": "            cohortSize: number;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 284,
+              "sign": "+",
+              "text": "            /**",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 285,
+              "sign": "+",
+              "text": "             * Format: int32",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 286,
+              "sign": "+",
+              "text": "             * @description How many practices would have a report generated.",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 287,
+              "sign": "+",
+              "text": "             */",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 288,
+              "sign": "+",
+              "text": "            proceedCount: number;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 289,
+              "sign": "+",
+              "text": "            skipped: components[\"schemas\"][\"CohortPreviewSkip\"][];",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 290,
+              "sign": "+",
+              "text": "            /** @description Always false. The opt-out guard reads an attribute the practice entity does not declare, so no practice can be reported OPTED_OUT and this preview has not verified opt-out status. */",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 291,
+              "sign": "+",
+              "text": "            optOutVerified: boolean;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 292,
+              "sign": "+",
+              "text": "        };",
+              "decision": null
+            },
+            {
+              "old": 243,
+              "new": 293,
+              "sign": " ",
+              "text": "        /**",
+              "decision": null
+            },
+            {
+              "old": 244,
+              "new": 294,
+              "sign": " ",
+              "text": "         * @description Whether the lead is associated with therapy, psychiatry, or both.",
+              "decision": null
+            },
+            {
+              "old": 245,
+              "new": 295,
+              "sign": " ",
+              "text": "         * @enum {string}",
+              "decision": null
+            }
+          ]
+        },
+        {
+          "header": "@@ -605,6 +655,47 @@",
+          "lines": [
+            {
+              "old": 605,
+              "new": 655,
+              "sign": " ",
+              "text": "            500: components[\"responses\"][\"InternalServerErrorResponse\"];",
+              "decision": null
+            },
+            {
+              "old": 606,
+              "new": 656,
+              "sign": " ",
+              "text": "        };",
+              "decision": null
+            },
+            {
+              "old": 607,
+              "new": 657,
+              "sign": " ",
+              "text": "    };",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 658,
+              "sign": "+",
+              "text": "    getCohortPreview: {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 659,
+              "sign": "+",
+              "text": "        parameters: {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 660,
+              "sign": "+",
+              "text": "            query?: never;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 661,
+              "sign": "+",
+              "text": "            header?: never;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 662,
+              "sign": "+",
+              "text": "            path?: never;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 663,
+              "sign": "+",
+              "text": "            cookie?: never;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 664,
+              "sign": "+",
+              "text": "        };",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 665,
+              "sign": "+",
+              "text": "        requestBody?: never;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 666,
+              "sign": "+",
+              "text": "        responses: {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 667,
+              "sign": "+",
+              "text": "            /** @description The cohort preview. */",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 668,
+              "sign": "+",
+              "text": "            200: {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 669,
+              "sign": "+",
+              "text": "                headers: {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 670,
+              "sign": "+",
+              "text": "                    [name: string]: unknown;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 671,
+              "sign": "+",
+              "text": "                };",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 672,
+              "sign": "+",
+              "text": "                content: {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 673,
+              "sign": "+",
+              "text": "                    \"application/json\": components[\"schemas\"][\"CohortPreviewResponse\"];",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 674,
+              "sign": "+",
+              "text": "                };",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 675,
+              "sign": "+",
+              "text": "            };",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 676,
+              "sign": "+",
+              "text": "            401: components[\"responses\"][\"AuthenticationErrorResponse\"];",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 677,
+              "sign": "+",
+              "text": "            500: components[\"responses\"][\"InternalServerErrorResponse\"];",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 678,
+              "sign": "+",
+              "text": "        };",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 679,
+              "sign": "+",
+              "text": "    };",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 680,
+              "sign": "+",
+              "text": "    optionsInternalPracticeReportsCohortPreview: {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 681,
+              "sign": "+",
+              "text": "        parameters: {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 682,
+              "sign": "+",
+              "text": "            query?: never;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 683,
+              "sign": "+",
+              "text": "            header?: never;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 684,
+              "sign": "+",
+              "text": "            path?: never;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 685,
+              "sign": "+",
+              "text": "            cookie?: never;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 686,
+              "sign": "+",
+              "text": "        };",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 687,
+              "sign": "+",
+              "text": "        requestBody?: never;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 688,
+              "sign": "+",
+              "text": "        responses: {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 689,
+              "sign": "+",
+              "text": "            /** @description No Content */",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 690,
+              "sign": "+",
+              "text": "            204: {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 691,
+              "sign": "+",
+              "text": "                headers: {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 692,
+              "sign": "+",
+              "text": "                    [name: string]: unknown;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 693,
+              "sign": "+",
+              "text": "                };",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 694,
+              "sign": "+",
+              "text": "                content?: never;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 695,
+              "sign": "+",
+              "text": "            };",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 696,
+              "sign": "+",
+              "text": "            500: components[\"responses\"][\"InternalServerErrorResponse\"];",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 697,
+              "sign": "+",
+              "text": "        };",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 698,
+              "sign": "+",
+              "text": "    };",
+              "decision": null
+            },
+            {
+              "old": 608,
+              "new": 699,
+              "sign": " ",
+              "text": "    listInternalPractices: {",
+              "decision": null
+            },
+            {
+              "old": 609,
+              "new": 700,
+              "sign": " ",
+              "text": "        parameters: {",
+              "decision": null
+            },
+            {
+              "old": 610,
+              "new": 701,
+              "sign": " ",
+              "text": "            query?: {",
+              "decision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/internal/index.ts",
+      "bucket": null,
+      "byDecisions": [],
+      "hunks": [
+        {
+          "header": "@@ -1,2 +1,3 @@",
+          "lines": [
+            {
+              "old": 1,
+              "new": 1,
+              "sign": " ",
+              "text": "export * from \"./pcp-referrals\";",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 2,
+              "sign": "+",
+              "text": "export * from \"./practice-reports\";",
+              "decision": null
+            },
+            {
+              "old": 2,
+              "new": 3,
+              "sign": " ",
+              "text": "export * from \"./practices\";",
+              "decision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/internal/practice-reports.ts",
+      "bucket": null,
+      "byDecisions": [],
+      "hunks": [
+        {
+          "header": "@@ -0,0 +1,14 @@",
+          "lines": [
+            {
+              "old": null,
+              "new": 1,
+              "sign": "+",
+              "text": "import type {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 2,
+              "sign": "+",
+              "text": "  GetCohortPreviewRouteHandler,",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 3,
+              "sign": "+",
+              "text": "  OptionsInternalPracticeReportsCohortPreviewRouteHandler,",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 4,
+              "sign": "+",
+              "text": "} from \"../../generated/internal-route-handler-types\";",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 5,
+              "sign": "+",
+              "text": "import * as cohortPreviewService from \"../../service/cohort-preview-service\";",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 6,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 7,
+              "sign": "+",
+              "text": "export const getCohortPreview: GetCohortPreviewRouteHandler = async () => {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 8,
+              "sign": "+",
+              "text": "  return cohortPreviewService.getCohortPreview();",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 9,
+              "sign": "+",
+              "text": "};",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 10,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 11,
+              "sign": "+",
+              "text": "export const optionsInternalPracticeReportsCohortPreview: OptionsInternalPracticeReportsCohortPreviewRouteHandler =",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 12,
+              "sign": "+",
+              "text": "  async (_request, reply) => {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 13,
+              "sign": "+",
+              "text": "    reply.code(204).send();",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 14,
+              "sign": "+",
+              "text": "  };",
+              "decision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/api/src/service/cohort-preview-service.ts",
+      "bucket": "explained",
+      "byDecisions": [
+        "d1",
+        "d2"
+      ],
+      "hunks": [
+        {
+          "header": "@@ -0,0 +1,42 @@",
+          "lines": [
+            {
+              "old": null,
+              "new": 1,
+              "sign": "+",
+              "text": "import { evaluateGuards, resolveCohort } from \"@attribution-service/practice-cohort\";",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 2,
+              "sign": "+",
+              "text": "import type { components } from \"../generated/internal-types\";",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 3,
+              "sign": "+",
+              "text": "",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 4,
+              "sign": "+",
+              "text": "type CohortPreviewResponse = components[\"schemas\"][\"CohortPreviewResponse\"];",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 5,
+              "sign": "+",
+              "text": "type CohortPreviewSkip = components[\"schemas\"][\"CohortPreviewSkip\"];",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 6,
+              "sign": "+",
+              "text": "",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 7,
+              "sign": "+",
+              "text": "/**",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 8,
+              "sign": "+",
+              "text": " * Resolves the cohort and evaluates the same guards the batch does, without any",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 9,
+              "sign": "+",
+              "text": " * of its side effects: no PDF render, no ledger row, no S3 staging, no email,",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 10,
+              "sign": "+",
+              "text": " * and no metric emission. resolveCohort is called without onPageFetched",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 11,
+              "sign": "+",
+              "text": " * precisely so no batch counter moves.",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 12,
+              "sign": "+",
+              "text": " *",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 13,
+              "sign": "+",
+              "text": " * optOutVerified is always false: isPracticeOptedOut reads `optedOut`, which",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 14,
+              "sign": "+",
+              "text": " * PracticeEntity does not declare (NEV-1412 closed Wont fix), so OPTED_OUT is",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 15,
+              "sign": "+",
+              "text": " * unreachable and the preview must not imply otherwise.",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 16,
+              "sign": "+",
+              "text": " */",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 17,
+              "sign": "+",
+              "text": "export async function getCohortPreview(): Promise<CohortPreviewResponse> {",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 18,
+              "sign": "+",
+              "text": "  const cohort = await resolveCohort();",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 19,
+              "sign": "+",
+              "text": "",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 20,
+              "sign": "+",
+              "text": "  const skipped: CohortPreviewSkip[] = [];",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 21,
+              "sign": "+",
+              "text": "  let proceedCount = 0;",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 22,
+              "sign": "+",
+              "text": "",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 23,
+              "sign": "+",
+              "text": "  for (const practice of cohort.practices) {",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 24,
+              "sign": "+",
+              "text": "    const decision = evaluateGuards(practice);",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 25,
+              "sign": "+",
+              "text": "    if (decision.decision === \"SKIP\") {",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 26,
+              "sign": "+",
+              "text": "      skipped.push({",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 27,
+              "sign": "+",
+              "text": "        practiceId: practice.id,",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 28,
+              "sign": "+",
+              "text": "        practiceName: practice.name,",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 29,
+              "sign": "+",
+              "text": "        reason: decision.reason,",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 30,
+              "sign": "+",
+              "text": "      });",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 31,
+              "sign": "+",
+              "text": "      continue;",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 32,
+              "sign": "+",
+              "text": "    }",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 33,
+              "sign": "+",
+              "text": "    proceedCount++;",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 34,
+              "sign": "+",
+              "text": "  }",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 35,
+              "sign": "+",
+              "text": "",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 36,
+              "sign": "+",
+              "text": "  return {",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 37,
+              "sign": "+",
+              "text": "    cohortSize: cohort.size,",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 38,
+              "sign": "+",
+              "text": "    proceedCount,",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 39,
+              "sign": "+",
+              "text": "    skipped,",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 40,
+              "sign": "+",
+              "text": "    optOutVerified: false,",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 41,
+              "sign": "+",
+              "text": "  };",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 42,
+              "sign": "+",
+              "text": "}",
+              "decision": "d1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/api/tsconfig.json",
+      "bucket": null,
+      "byDecisions": [],
+      "hunks": [
+        {
+          "header": "@@ -12,6 +12,9 @@",
+          "lines": [
+            {
+              "old": 12,
+              "new": 12,
+              "sign": " ",
+              "text": "    {",
+              "decision": null
+            },
+            {
+              "old": 13,
+              "new": 13,
+              "sign": " ",
+              "text": "      \"path\": \"../../packages/pdf-renderer\"",
+              "decision": null
+            },
+            {
+              "old": 14,
+              "new": 14,
+              "sign": " ",
+              "text": "    },",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 15,
+              "sign": "+",
+              "text": "    {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 16,
+              "sign": "+",
+              "text": "      \"path\": \"../../packages/practice-cohort\"",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 17,
+              "sign": "+",
+              "text": "    },",
+              "decision": null
+            },
+            {
+              "old": 15,
+              "new": 18,
+              "sign": " ",
+              "text": "    {",
+              "decision": null
+            },
+            {
+              "old": 16,
+              "new": 19,
+              "sign": " ",
+              "text": "      \"path\": \"../../packages/reporting\"",
+              "decision": null
+            },
+            {
+              "old": 17,
+              "new": 20,
+              "sign": " ",
+              "text": "    }",
+              "decision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "docs/openapi-internal.yaml",
+      "bucket": "explained",
+      "byDecisions": [
+        "d2"
+      ],
+      "hunks": [
+        {
+          "header": "@@ -20,6 +20,8 @@",
+          "lines": [
+            {
+              "old": 20,
+              "new": 20,
+              "sign": " ",
+              "text": "tags:",
+              "decision": null
+            },
+            {
+              "old": 21,
+              "new": 21,
+              "sign": " ",
+              "text": "  - name: pcp-referrals",
+              "decision": null
+            },
+            {
+              "old": 22,
+              "new": 22,
+              "sign": " ",
+              "text": "    description: Internal PCP referral management endpoints",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 23,
+              "sign": "+",
+              "text": "  - name: practice-reports",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 24,
+              "sign": "+",
+              "text": "    description: Internal monthly batch report endpoints",
+              "decision": null
+            },
+            {
+              "old": 23,
+              "new": 25,
+              "sign": " ",
+              "text": "  - name: practices",
+              "decision": null
+            },
+            {
+              "old": 24,
+              "new": 26,
+              "sign": " ",
+              "text": "    description: Internal practice management endpoints",
+              "decision": null
+            },
+            {
+              "old": 25,
+              "new": 27,
+              "sign": " ",
+              "text": "",
+              "decision": null
+            }
+          ]
+        },
+        {
+          "header": "@@ -257,6 +259,48 @@",
+          "lines": [
+            {
+              "old": 257,
+              "new": 259,
+              "sign": " ",
+              "text": "      tags:",
+              "decision": "d2"
+            },
+            {
+              "old": 258,
+              "new": 260,
+              "sign": " ",
+              "text": "        - pcp-referrals",
+              "decision": "d2"
+            },
+            {
+              "old": 259,
+              "new": 261,
+              "sign": " ",
+              "text": "",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 262,
+              "sign": "+",
+              "text": "  /internal/practice-reports/cohort-preview:",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 263,
+              "sign": "+",
+              "text": "    get:",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 264,
+              "sign": "+",
+              "text": "      operationId: getCohortPreview",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 265,
+              "sign": "+",
+              "text": "      summary: Preview the monthly batch cohort",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 266,
+              "sign": "+",
+              "text": "      description: >",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 267,
+              "sign": "+",
+              "text": "        Read-only. Resolves the cohort exactly as the monthly batch would and",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 268,
+              "sign": "+",
+              "text": "        reports, per practice, whether it would proceed or be skipped and why.",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 269,
+              "sign": "+",
+              "text": "        Renders no PDF, writes no ledger row, stages nothing to S3, sends no",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 270,
+              "sign": "+",
+              "text": "        email, and emits no batch metric.",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 271,
+              "sign": "+",
+              "text": "",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 272,
+              "sign": "+",
+              "text": "        The opt-out guard is evaluated against an attribute the practice entity",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 273,
+              "sign": "+",
+              "text": "        does not declare, so it can never report OPTED_OUT. optOutVerified is",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 274,
+              "sign": "+",
+              "text": "        false to make that explicit — a preview must not imply it checked",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 275,
+              "sign": "+",
+              "text": "        opt-out status.",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 276,
+              "sign": "+",
+              "text": "      security:",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 277,
+              "sign": "+",
+              "text": "        - apiKeyAuth: []",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 278,
+              "sign": "+",
+              "text": "      responses:",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 279,
+              "sign": "+",
+              "text": "        \"200\":",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 280,
+              "sign": "+",
+              "text": "          description: The cohort preview.",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 281,
+              "sign": "+",
+              "text": "          content:",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 282,
+              "sign": "+",
+              "text": "            application/json:",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 283,
+              "sign": "+",
+              "text": "              schema:",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 284,
+              "sign": "+",
+              "text": "                $ref: \"#/components/schemas/CohortPreviewResponse\"",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 285,
+              "sign": "+",
+              "text": "        \"401\":",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 286,
+              "sign": "+",
+              "text": "          $ref: \"#/components/responses/AuthenticationErrorResponse\"",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 287,
+              "sign": "+",
+              "text": "        \"500\":",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 288,
+              "sign": "+",
+              "text": "          $ref: \"#/components/responses/InternalServerErrorResponse\"",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 289,
+              "sign": "+",
+              "text": "      tags:",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 290,
+              "sign": "+",
+              "text": "        - practice-reports",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 291,
+              "sign": "+",
+              "text": "    options:",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 292,
+              "sign": "+",
+              "text": "      summary: CORS preflight",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 293,
+              "sign": "+",
+              "text": "      description: Auto-generated preflight operation for Kong routing.",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 294,
+              "sign": "+",
+              "text": "      operationId: optionsInternalPracticeReportsCohortPreview",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 295,
+              "sign": "+",
+              "text": "      security: []",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 296,
+              "sign": "+",
+              "text": "      responses:",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 297,
+              "sign": "+",
+              "text": "        \"204\":",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 298,
+              "sign": "+",
+              "text": "          description: No Content",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 299,
+              "sign": "+",
+              "text": "        \"500\":",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 300,
+              "sign": "+",
+              "text": "          $ref: \"#/components/responses/InternalServerErrorResponse\"",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 301,
+              "sign": "+",
+              "text": "      tags:",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 302,
+              "sign": "+",
+              "text": "        - practice-reports",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 303,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": 260,
+              "new": 304,
+              "sign": " ",
+              "text": "  /internal/practices:",
+              "decision": null
+            },
+            {
+              "old": 261,
+              "new": 305,
+              "sign": " ",
+              "text": "    get:",
+              "decision": null
+            },
+            {
+              "old": 262,
+              "new": 306,
+              "sign": " ",
+              "text": "      operationId: listInternalPractices",
+              "decision": null
+            }
+          ]
+        },
+        {
+          "header": "@@ -755,6 +799,64 @@",
+          "lines": [
+            {
+              "old": 755,
+              "new": 799,
+              "sign": " ",
+              "text": "        - name",
+              "decision": null
+            },
+            {
+              "old": 756,
+              "new": 800,
+              "sign": " ",
+              "text": "        - status",
+              "decision": null
+            },
+            {
+              "old": 757,
+              "new": 801,
+              "sign": " ",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 802,
+              "sign": "+",
+              "text": "    SkipReason:",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 803,
+              "sign": "+",
+              "text": "      type: string",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 804,
+              "sign": "+",
+              "text": "      description: Why the batch would skip a practice.",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 805,
+              "sign": "+",
+              "text": "      enum:",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 806,
+              "sign": "+",
+              "text": "        - NO_PRACTICE_CONTACT_EMAIL",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 807,
+              "sign": "+",
+              "text": "        - OPTED_OUT",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 808,
+              "sign": "+",
+              "text": "        - BELOW_REFERRAL_FLOOR",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 809,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 810,
+              "sign": "+",
+              "text": "    CohortPreviewSkip:",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 811,
+              "sign": "+",
+              "text": "      type: object",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 812,
+              "sign": "+",
+              "text": "      properties:",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 813,
+              "sign": "+",
+              "text": "        practiceId:",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 814,
+              "sign": "+",
+              "text": "          type: string",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 815,
+              "sign": "+",
+              "text": "          minLength: 1",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 816,
+              "sign": "+",
+              "text": "          maxLength: 100",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 817,
+              "sign": "+",
+              "text": "        practiceName:",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 818,
+              "sign": "+",
+              "text": "          type: string",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 819,
+              "sign": "+",
+              "text": "          minLength: 1",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 820,
+              "sign": "+",
+              "text": "          maxLength: 255",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 821,
+              "sign": "+",
+              "text": "        reason:",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 822,
+              "sign": "+",
+              "text": "          $ref: \"#/components/schemas/SkipReason\"",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 823,
+              "sign": "+",
+              "text": "      required:",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 824,
+              "sign": "+",
+              "text": "        - practiceId",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 825,
+              "sign": "+",
+              "text": "        - practiceName",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 826,
+              "sign": "+",
+              "text": "        - reason",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 827,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 828,
+              "sign": "+",
+              "text": "    CohortPreviewResponse:",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 829,
+              "sign": "+",
+              "text": "      type: object",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 830,
+              "sign": "+",
+              "text": "      properties:",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 831,
+              "sign": "+",
+              "text": "        cohortSize:",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 832,
+              "sign": "+",
+              "text": "          type: integer",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 833,
+              "sign": "+",
+              "text": "          format: int32",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 834,
+              "sign": "+",
+              "text": "          minimum: 0",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 835,
+              "sign": "+",
+              "text": "          maximum: 1000000",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 836,
+              "sign": "+",
+              "text": "          description: Total SOLD practices selected, across every page.",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 837,
+              "sign": "+",
+              "text": "        proceedCount:",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 838,
+              "sign": "+",
+              "text": "          type: integer",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 839,
+              "sign": "+",
+              "text": "          format: int32",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 840,
+              "sign": "+",
+              "text": "          minimum: 0",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 841,
+              "sign": "+",
+              "text": "          maximum: 1000000",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 842,
+              "sign": "+",
+              "text": "          description: How many practices would have a report generated.",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 843,
+              "sign": "+",
+              "text": "        skipped:",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 844,
+              "sign": "+",
+              "text": "          type: array",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 845,
+              "sign": "+",
+              "text": "          maxItems: 1000000",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 846,
+              "sign": "+",
+              "text": "          items:",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 847,
+              "sign": "+",
+              "text": "            $ref: \"#/components/schemas/CohortPreviewSkip\"",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 848,
+              "sign": "+",
+              "text": "        optOutVerified:",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 849,
+              "sign": "+",
+              "text": "          type: boolean",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 850,
+              "sign": "+",
+              "text": "          description: >",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 851,
+              "sign": "+",
+              "text": "            Always false. The opt-out guard reads an attribute the practice",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 852,
+              "sign": "+",
+              "text": "            entity does not declare, so no practice can be reported OPTED_OUT",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 853,
+              "sign": "+",
+              "text": "            and this preview has not verified opt-out status.",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 854,
+              "sign": "+",
+              "text": "      required:",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 855,
+              "sign": "+",
+              "text": "        - cohortSize",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 856,
+              "sign": "+",
+              "text": "        - proceedCount",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 857,
+              "sign": "+",
+              "text": "        - skipped",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 858,
+              "sign": "+",
+              "text": "        - optOutVerified",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 859,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": 758,
+              "new": 860,
+              "sign": " ",
+              "text": "    LeadType:",
+              "decision": null
+            },
+            {
+              "old": 759,
+              "new": 861,
+              "sign": " ",
+              "text": "      type: string",
+              "decision": null
+            },
+            {
+              "old": 760,
+              "new": 862,
+              "sign": " ",
+              "text": "      description: Whether the lead is associated with therapy, psychiatry, or both.",
+              "decision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "pnpm-lock.yaml",
+      "bucket": null,
+      "byDecisions": [],
+      "hunks": [
+        {
+          "header": "@@ -71,6 +71,9 @@",
+          "lines": [
+            {
+              "old": 71,
+              "new": 71,
+              "sign": " ",
+              "text": "      '@attribution-service/pdf-renderer':",
+              "decision": null
+            },
+            {
+              "old": 72,
+              "new": 72,
+              "sign": " ",
+              "text": "        specifier: workspace:^",
+              "decision": null
+            },
+            {
+              "old": 73,
+              "new": 73,
+              "sign": " ",
+              "text": "        version: link:../../packages/pdf-renderer",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 74,
+              "sign": "+",
+              "text": "      '@attribution-service/practice-cohort':",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 75,
+              "sign": "+",
+              "text": "        specifier: workspace:^",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 76,
+              "sign": "+",
+              "text": "        version: link:../../packages/practice-cohort",
+              "decision": null
+            },
+            {
+              "old": 74,
+              "new": 77,
+              "sign": " ",
+              "text": "      '@attribution-service/prospect-service-client':",
+              "decision": null
+            },
+            {
+              "old": 75,
+              "new": 78,
+              "sign": " ",
+              "text": "        specifier: workspace:^",
+              "decision": null
+            },
+            {
+              "old": 76,
+              "new": 79,
+              "sign": " ",
+              "text": "        version: link:../../packages/prospect-service-client",
+              "decision": null
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

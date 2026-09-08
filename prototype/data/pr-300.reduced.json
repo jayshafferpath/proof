@@ -1,0 +1,4265 @@
+{
+  "contract": "proof.spine/v2",
+  "pr": {
+    "number": "300",
+    "ticket": "devdash-internal-api-phase5a",
+    "title": "feat: extract @attribution-service/practice-cohort from batch-runner",
+    "repo": "pathccm/attribution-service",
+    "headSha": "7ec62ee1e5bc6517a6640ef7e48701145764aaff",
+    "baseSha": "3ee7fb7d40f4c6e1e2a06535e3e2545bfcd24099"
+  },
+  "decisions": [
+    {
+      "id": "d1",
+      "title": "Extract cohort selection + guards into packages/practice-cohort, keep emitPracticeSkipped in batch-runner",
+      "chose": "Move resolveCohort, evaluateGuards, the pure predicates, and SkipReason into a new @attribution-service/practice-cohort package; emitPracticeSkipped stays in batch-runner and the new package declares no @pathccm/observability dependency at all.",
+      "rejected": "Moving emitPracticeSkipped into the shared package alongside selection/guards.",
+      "why": "A future dashboard preview must not move batch counters. Keeping the emitter with the batch and excluding the observability dependency from the shared package makes that a structural guarantee, not a convention someone could violate by importing DefaultStats into shared code.",
+      "ac": [
+        "CX-3"
+      ],
+      "isReject": false,
+      "provenance": "reconstructed",
+      "provenanceTrail": [
+        {
+          "seq": 1,
+          "event": "realize",
+          "by": "retrofit",
+          "phase": "execute"
+        }
+      ],
+      "history": [],
+      "evidence": [
+        {
+          "kind": "anchor",
+          "code": {
+            "file": "apps/jobs/batch-runner/src/services/guards.ts",
+            "lines": "1-20",
+            "hl": [],
+            "context": false
+          }
+        },
+        {
+          "kind": "anchor",
+          "code": {
+            "file": "packages/practice-cohort/src/guards.ts",
+            "lines": "1-24",
+            "hl": [],
+            "context": false
+          }
+        }
+      ],
+      "tests": []
+    },
+    {
+      "id": "d2",
+      "title": "Split cohort selection from metric emission via an optional onPageFetched callback",
+      "chose": "resolveCohort in the shared package takes an optional onPageFetched callback; batch-runner wraps it in services/cohort.ts, passing the callback and emitting its own size gauge, so COHORT.PAGE_FETCHED and COHORT.SIZE still fire exactly as before.",
+      "rejected": "Emitting the Datadog counters directly inside the shared resolveCohort.",
+      "why": "A future read-only caller (the dashboard preview) can call the shared resolver with no callback, with no code path by which it emits a batch metric.",
+      "ac": [
+        "CX-5"
+      ],
+      "isReject": false,
+      "provenance": "reconstructed",
+      "provenanceTrail": [
+        {
+          "seq": 2,
+          "event": "realize",
+          "by": "retrofit",
+          "phase": "execute"
+        }
+      ],
+      "history": [],
+      "evidence": [
+        {
+          "kind": "anchor",
+          "code": {
+            "file": "packages/practice-cohort/src/cohort.ts",
+            "lines": "1-31",
+            "hl": [],
+            "context": false
+          }
+        },
+        {
+          "kind": "anchor",
+          "code": {
+            "file": "apps/jobs/batch-runner/src/services/cohort.ts",
+            "lines": "100-164",
+            "hl": [],
+            "context": false
+          }
+        }
+      ],
+      "tests": []
+    },
+    {
+      "id": "d3",
+      "title": "Package boundary enforced by a test, not left as a comment",
+      "chose": "package-boundary.test.ts asserts the dependency list is exactly [@attribution-service/data] and excludes @pathccm/observability.",
+      "rejected": "Documenting the no-observability constraint only in a comment.",
+      "why": "A comment can rot silently; a test that enumerates the exact dependency list fails loudly the moment someone adds an observability import.",
+      "ac": [
+        "CX-3"
+      ],
+      "isReject": false,
+      "provenance": "through-review",
+      "provenanceTrail": [
+        {
+          "seq": 3,
+          "event": "realize",
+          "by": "retrofit",
+          "phase": "execute"
+        },
+        {
+          "seq": 4,
+          "event": "verify",
+          "by": "retrofit",
+          "phase": "review",
+          "reason": "All five pre-existing batch-runner service test files pass with only import paths changed, no assertion touched."
+        }
+      ],
+      "history": [],
+      "evidence": [
+        {
+          "kind": "anchor",
+          "code": {
+            "file": "packages/practice-cohort/src/__tests__/package-boundary.test.ts",
+            "lines": "1-25",
+            "hl": [],
+            "context": false
+          }
+        }
+      ],
+      "tests": []
+    },
+    {
+      "id": "d4",
+      "title": "New package follows the /add-package checklist",
+      "chose": "Own workspace under packages/, Dockerfile dist wiring, tsconfig project reference, CLAUDE.md tree entry.",
+      "rejected": "Folding the extracted code into an existing common/ package.",
+      "why": "A dedicated workspace is what makes the dependency-boundary test meaningful; a shared common/ package would already carry other deps.",
+      "ac": [
+        "CX-6"
+      ],
+      "isReject": false,
+      "provenance": "reconstructed",
+      "provenanceTrail": [
+        {
+          "seq": 5,
+          "event": "realize",
+          "by": "retrofit",
+          "phase": "execute"
+        }
+      ],
+      "history": [],
+      "evidence": [
+        {
+          "kind": "anchor",
+          "code": {
+            "file": "packages/practice-cohort/package.json",
+            "lines": "1-34",
+            "hl": [],
+            "context": false
+          }
+        },
+        {
+          "kind": "anchor",
+          "code": {
+            "file": "Dockerfile",
+            "lines": "118-126",
+            "hl": [],
+            "context": false
+          }
+        }
+      ],
+      "tests": []
+    }
+  ],
+  "coverage": {
+    "explained": [
+      {
+        "file": "apps/jobs/batch-runner/src/services/guards.ts",
+        "byDecisions": [
+          "d1"
+        ]
+      },
+      {
+        "file": "packages/practice-cohort/src/guards.ts",
+        "byDecisions": [
+          "d1"
+        ]
+      },
+      {
+        "file": "packages/practice-cohort/src/cohort.ts",
+        "byDecisions": [
+          "d2"
+        ]
+      },
+      {
+        "file": "apps/jobs/batch-runner/src/services/cohort.ts",
+        "byDecisions": [
+          "d2"
+        ]
+      },
+      {
+        "file": "packages/practice-cohort/src/__tests__/package-boundary.test.ts",
+        "byDecisions": [
+          "d3"
+        ]
+      },
+      {
+        "file": "packages/practice-cohort/package.json",
+        "byDecisions": [
+          "d4"
+        ]
+      },
+      {
+        "file": "Dockerfile",
+        "byDecisions": [
+          "d4"
+        ]
+      }
+    ],
+    "tests": []
+  },
+  "ledgerMeta": {
+    "ticket": "devdash-internal-api-phase5a",
+    "events": 5,
+    "closed": null
+  },
+  "diff": [
+    {
+      "file": "CLAUDE.md",
+      "bucket": null,
+      "byDecisions": [],
+      "hunks": [
+        {
+          "header": "@@ -65,6 +65,12 @@",
+          "lines": [
+            {
+              "old": 65,
+              "new": 65,
+              "sign": " ",
+              "text": "├── src/",
+              "decision": null
+            },
+            {
+              "old": 66,
+              "new": 66,
+              "sign": " ",
+              "text": "│   ├── ...              # implementation",
+              "decision": null
+            },
+            {
+              "old": 67,
+              "new": 67,
+              "sign": " ",
+              "text": "│   └── __tests__/       # unit tests",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 68,
+              "sign": "+",
+              "text": "packages/practice-cohort/     # @attribution-service/practice-cohort",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 69,
+              "sign": "+",
+              "text": "├── src/                 # Shared by the M2 batch and the dashboard cohort preview",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 70,
+              "sign": "+",
+              "text": "│   ├── cohort.ts        # resolveCohort — SOLD selection; caller owns metric emission",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 71,
+              "sign": "+",
+              "text": "│   ├── guards.ts        # evaluateGuards + pure predicates (no observability dep)",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 72,
+              "sign": "+",
+              "text": "│   ├── skip-reason.ts   # SkipReason enum",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 73,
+              "sign": "+",
+              "text": "│   └── __tests__/       # unit tests",
+              "decision": null
+            },
+            {
+              "old": 68,
+              "new": 74,
+              "sign": " ",
+              "text": "packages/scheduling-client/    # @attribution-service/scheduling-client",
+              "decision": null
+            },
+            {
+              "old": 69,
+              "new": 75,
+              "sign": " ",
+              "text": "├── src/",
+              "decision": null
+            },
+            {
+              "old": 70,
+              "new": 76,
+              "sign": " ",
+              "text": "│   ├── client.ts        # createSchedulingClient factory (x-api-key auth)",
+              "decision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "Dockerfile",
+      "bucket": "explained",
+      "byDecisions": [
+        "d4"
+      ],
+      "hunks": [
+        {
+          "header": "@@ -118,6 +118,7 @@",
+          "lines": [
+            {
+              "old": 118,
+              "new": 118,
+              "sign": " ",
+              "text": "COPY --from=build /app/packages/feature-flags/dist /app/packages/feature-flags/dist",
+              "decision": "d4"
+            },
+            {
+              "old": 119,
+              "new": 119,
+              "sign": " ",
+              "text": "COPY --from=build /app/packages/kafka-client/dist /app/packages/kafka-client/dist",
+              "decision": "d4"
+            },
+            {
+              "old": 120,
+              "new": 120,
+              "sign": " ",
+              "text": "COPY --from=build /app/packages/pdf-renderer/dist /app/packages/pdf-renderer/dist",
+              "decision": "d4"
+            },
+            {
+              "old": null,
+              "new": 121,
+              "sign": "+",
+              "text": "COPY --from=build /app/packages/practice-cohort/dist /app/packages/practice-cohort/dist",
+              "decision": "d4"
+            },
+            {
+              "old": 121,
+              "new": 122,
+              "sign": " ",
+              "text": "COPY --from=build /app/packages/reporting/dist /app/packages/reporting/dist",
+              "decision": "d4"
+            },
+            {
+              "old": 122,
+              "new": 123,
+              "sign": " ",
+              "text": "COPY --from=build /app/packages/s3-client/dist /app/packages/s3-client/dist",
+              "decision": "d4"
+            },
+            {
+              "old": 123,
+              "new": 124,
+              "sign": " ",
+              "text": "COPY --from=build /app/apps/jobs/batch-runner/dist /app/apps/jobs/batch-runner/dist",
+              "decision": "d4"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/jobs/batch-runner/package.json",
+      "bucket": null,
+      "byDecisions": [],
+      "hunks": [
+        {
+          "header": "@@ -20,6 +20,7 @@",
+          "lines": [
+            {
+              "old": 20,
+              "new": 20,
+              "sign": " ",
+              "text": "    \"@attribution-service/feature-flags\": \"workspace:*\",",
+              "decision": null
+            },
+            {
+              "old": 21,
+              "new": 21,
+              "sign": " ",
+              "text": "    \"@attribution-service/kafka-client\": \"workspace:*\",",
+              "decision": null
+            },
+            {
+              "old": 22,
+              "new": 22,
+              "sign": " ",
+              "text": "    \"@attribution-service/pdf-renderer\": \"workspace:*\",",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 23,
+              "sign": "+",
+              "text": "    \"@attribution-service/practice-cohort\": \"workspace:*\",",
+              "decision": null
+            },
+            {
+              "old": 23,
+              "new": 24,
+              "sign": " ",
+              "text": "    \"@attribution-service/reporting\": \"workspace:*\",",
+              "decision": null
+            },
+            {
+              "old": 24,
+              "new": 25,
+              "sign": " ",
+              "text": "    \"@attribution-service/s3-client\": \"workspace:*\",",
+              "decision": null
+            },
+            {
+              "old": 25,
+              "new": 26,
+              "sign": " ",
+              "text": "    \"@pathccm/observability\": \"1.2.2\",",
+              "decision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/jobs/batch-runner/src/__tests__/jobs/run-practice-report-batch.test.ts",
+      "bucket": null,
+      "byDecisions": [],
+      "hunks": [
+        {
+          "header": "@@ -1,8 +1,8 @@",
+          "lines": [
+            {
+              "old": 1,
+              "new": 1,
+              "sign": " ",
+              "text": "import { clearAllItems, PracticeStatus, practiceRepository } from \"@attribution-service/data\";",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 2,
+              "sign": "+",
+              "text": "import { SkipReason } from \"@attribution-service/practice-cohort\";",
+              "decision": null
+            },
+            {
+              "old": 2,
+              "new": 3,
+              "sign": " ",
+              "text": "import { DefaultStats } from \"@pathccm/observability\";",
+              "decision": null
+            },
+            {
+              "old": 3,
+              "new": 4,
+              "sign": " ",
+              "text": "import { afterEach, beforeEach, describe, expect, it, vi } from \"vitest\";",
+              "decision": null
+            },
+            {
+              "old": 4,
+              "new": 5,
+              "sign": " ",
+              "text": "import { computeReportWindow, runPracticeReportBatch } from \"../../jobs/run-practice-report-batch\";",
+              "decision": null
+            },
+            {
+              "old": 5,
+              "new": null,
+              "sign": "-",
+              "text": "import { SkipReason } from \"../../services/skip-reason\";",
+              "decision": null
+            },
+            {
+              "old": 6,
+              "new": 6,
+              "sign": " ",
+              "text": "import { OUTCOME_KIND } from \"../../services/types\";",
+              "decision": null
+            },
+            {
+              "old": 7,
+              "new": 7,
+              "sign": " ",
+              "text": "import { BATCH_METRICS } from \"../../util/metrics\";",
+              "decision": null
+            },
+            {
+              "old": 8,
+              "new": 8,
+              "sign": " ",
+              "text": "",
+              "decision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/jobs/batch-runner/src/__tests__/services/loop.test.ts",
+      "bucket": null,
+      "byDecisions": [],
+      "hunks": [
+        {
+          "header": "@@ -1,13 +1,12 @@",
+          "lines": [
+            {
+              "old": 1,
+              "new": 1,
+              "sign": " ",
+              "text": "import type { Practice } from \"@attribution-service/data\";",
+              "decision": null
+            },
+            {
+              "old": 2,
+              "new": 2,
+              "sign": " ",
+              "text": "import { PracticeStatus } from \"@attribution-service/data\";",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 3,
+              "sign": "+",
+              "text": "import { type Cohort, SkipReason } from \"@attribution-service/practice-cohort\";",
+              "decision": null
+            },
+            {
+              "old": 3,
+              "new": 4,
+              "sign": " ",
+              "text": "import { DefaultStats } from \"@pathccm/observability\";",
+              "decision": null
+            },
+            {
+              "old": 4,
+              "new": 5,
+              "sign": " ",
+              "text": "import { afterEach, beforeEach, describe, expect, it, vi } from \"vitest\";",
+              "decision": null
+            },
+            {
+              "old": 5,
+              "new": 6,
+              "sign": " ",
+              "text": "import { runBatch } from \"../../services/loop\";",
+              "decision": null
+            },
+            {
+              "old": 6,
+              "new": null,
+              "sign": "-",
+              "text": "import { SkipReason } from \"../../services/skip-reason\";",
+              "decision": null
+            },
+            {
+              "old": 7,
+              "new": 7,
+              "sign": " ",
+              "text": "import type { PracticeOutcome } from \"../../services/types\";",
+              "decision": null
+            },
+            {
+              "old": 8,
+              "new": 8,
+              "sign": " ",
+              "text": "import { logContext, logger } from \"../../util/logger\";",
+              "decision": null
+            },
+            {
+              "old": 9,
+              "new": 9,
+              "sign": " ",
+              "text": "import { BATCH_METRICS } from \"../../util/metrics\";",
+              "decision": null
+            },
+            {
+              "old": 10,
+              "new": null,
+              "sign": "-",
+              "text": "import type { Cohort } from \"../../util/types\";",
+              "decision": null
+            },
+            {
+              "old": 11,
+              "new": 10,
+              "sign": " ",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": 12,
+              "new": 11,
+              "sign": " ",
+              "text": "const buildPractice = (id: string, overrides: Record<string, unknown> = {}): Practice =>",
+              "decision": null
+            },
+            {
+              "old": 13,
+              "new": 12,
+              "sign": " ",
+              "text": "  ({",
+              "decision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/jobs/batch-runner/src/__tests__/services/metrics-emission.test.ts",
+      "bucket": null,
+      "byDecisions": [],
+      "hunks": [
+        {
+          "header": "@@ -1,7 +1,7 @@",
+          "lines": [
+            {
+              "old": null,
+              "new": 1,
+              "sign": "+",
+              "text": "import { SkipReason } from \"@attribution-service/practice-cohort\";",
+              "decision": null
+            },
+            {
+              "old": 1,
+              "new": 2,
+              "sign": " ",
+              "text": "import { DefaultStats } from \"@pathccm/observability\";",
+              "decision": null
+            },
+            {
+              "old": 2,
+              "new": 3,
+              "sign": " ",
+              "text": "import { afterEach, beforeEach, describe, expect, it, vi } from \"vitest\";",
+              "decision": null
+            },
+            {
+              "old": 3,
+              "new": 4,
+              "sign": " ",
+              "text": "import { emitPracticeSkipped } from \"../../services/guards\";",
+              "decision": null
+            },
+            {
+              "old": 4,
+              "new": null,
+              "sign": "-",
+              "text": "import { SkipReason } from \"../../services/skip-reason\";",
+              "decision": null
+            },
+            {
+              "old": 5,
+              "new": 5,
+              "sign": " ",
+              "text": "import { BATCH_METRICS } from \"../../util/metrics\";",
+              "decision": null
+            },
+            {
+              "old": 6,
+              "new": 6,
+              "sign": " ",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": 7,
+              "new": 7,
+              "sign": " ",
+              "text": "describe(\"emitPracticeSkipped\", () => {",
+              "decision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/jobs/batch-runner/src/__tests__/services/outcome.test.ts",
+      "bucket": null,
+      "byDecisions": [],
+      "hunks": [
+        {
+          "header": "@@ -1,6 +1,6 @@",
+          "lines": [
+            {
+              "old": null,
+              "new": 1,
+              "sign": "+",
+              "text": "import { SkipReason } from \"@attribution-service/practice-cohort\";",
+              "decision": null
+            },
+            {
+              "old": 1,
+              "new": 2,
+              "sign": " ",
+              "text": "import { describe, expect, it } from \"vitest\";",
+              "decision": null
+            },
+            {
+              "old": 2,
+              "new": 3,
+              "sign": " ",
+              "text": "import { OUTCOME_TO_SKIP_REASON } from \"../../services/outcome\";",
+              "decision": null
+            },
+            {
+              "old": 3,
+              "new": null,
+              "sign": "-",
+              "text": "import { SkipReason } from \"../../services/skip-reason\";",
+              "decision": null
+            },
+            {
+              "old": 4,
+              "new": 4,
+              "sign": " ",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": 5,
+              "new": 5,
+              "sign": " ",
+              "text": "describe(\"OUTCOME_TO_SKIP_REASON\", () => {",
+              "decision": null
+            },
+            {
+              "old": 6,
+              "new": 6,
+              "sign": " ",
+              "text": "  it(\"maps SKIPPED_FLOOR to BELOW_REFERRAL_FLOOR\", () => {",
+              "decision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/jobs/batch-runner/src/services/cohort.ts",
+      "bucket": "explained",
+      "byDecisions": [
+        "d2"
+      ],
+      "hunks": [
+        {
+          "header": "@@ -1,36 +1,36 @@",
+          "lines": [
+            {
+              "old": 1,
+              "new": null,
+              "sign": "-",
+              "text": "import { type Practice, PracticeStatus, practiceRepository } from \"@attribution-service/data\";",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 1,
+              "sign": "+",
+              "text": "import {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 2,
+              "sign": "+",
+              "text": "  type Cohort,",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 3,
+              "sign": "+",
+              "text": "  type ResolveCohortOptions,",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 4,
+              "sign": "+",
+              "text": "  resolveCohort as resolveCohortWithoutMetrics,",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 5,
+              "sign": "+",
+              "text": "} from \"@attribution-service/practice-cohort\";",
+              "decision": null
+            },
+            {
+              "old": 2,
+              "new": 6,
+              "sign": " ",
+              "text": "import { DefaultStats } from \"@pathccm/observability\";",
+              "decision": null
+            },
+            {
+              "old": 3,
+              "new": 7,
+              "sign": " ",
+              "text": "import { logger } from \"../util/logger\";",
+              "decision": null
+            },
+            {
+              "old": 4,
+              "new": 8,
+              "sign": " ",
+              "text": "import { BATCH_METRICS } from \"../util/metrics\";",
+              "decision": null
+            },
+            {
+              "old": 5,
+              "new": null,
+              "sign": "-",
+              "text": "import type { Cohort, ResolveCohortOptions } from \"../util/types\";",
+              "decision": null
+            },
+            {
+              "old": 6,
+              "new": 9,
+              "sign": " ",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": 7,
+              "new": null,
+              "sign": "-",
+              "text": "const DEFAULT_PAGE_SIZE = 100;",
+              "decision": null
+            },
+            {
+              "old": 8,
+              "new": null,
+              "sign": "-",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": 9,
+              "new": null,
+              "sign": "-",
+              "text": "export const resolveCohort = async ({",
+              "decision": null
+            },
+            {
+              "old": 10,
+              "new": null,
+              "sign": "-",
+              "text": "  pageSize = DEFAULT_PAGE_SIZE,",
+              "decision": null
+            },
+            {
+              "old": 11,
+              "new": null,
+              "sign": "-",
+              "text": "}: ResolveCohortOptions = {}): Promise<Cohort> => {",
+              "decision": null
+            },
+            {
+              "old": 12,
+              "new": null,
+              "sign": "-",
+              "text": "  const practices: Practice[] = [];",
+              "decision": null
+            },
+            {
+              "old": 13,
+              "new": null,
+              "sign": "-",
+              "text": "  let cursor: string | undefined;",
+              "decision": null
+            },
+            {
+              "old": 14,
+              "new": null,
+              "sign": "-",
+              "text": "  do {",
+              "decision": null
+            },
+            {
+              "old": 15,
+              "new": null,
+              "sign": "-",
+              "text": "    const page = await practiceRepository.listPracticesByStatus(",
+              "decision": null
+            },
+            {
+              "old": 16,
+              "new": null,
+              "sign": "-",
+              "text": "      PracticeStatus.SOLD,",
+              "decision": null
+            },
+            {
+              "old": 17,
+              "new": null,
+              "sign": "-",
+              "text": "      pageSize,",
+              "decision": null
+            },
+            {
+              "old": 18,
+              "new": null,
+              "sign": "-",
+              "text": "      cursor,",
+              "decision": null
+            },
+            {
+              "old": 19,
+              "new": null,
+              "sign": "-",
+              "text": "    );",
+              "decision": null
+            },
+            {
+              "old": 20,
+              "new": null,
+              "sign": "-",
+              "text": "    practices.push(...page.practices);",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 10,
+              "sign": "+",
+              "text": "/**",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 11,
+              "sign": "+",
+              "text": " * Batch-side cohort resolution: shared selection logic plus the batch's own",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 12,
+              "sign": "+",
+              "text": " * metric emission. The dashboard preview calls the shared resolver directly so",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 13,
+              "sign": "+",
+              "text": " * it moves neither of these.",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 14,
+              "sign": "+",
+              "text": " */",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 15,
+              "sign": "+",
+              "text": "export const resolveCohort = async (",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 16,
+              "sign": "+",
+              "text": "  options: Omit<ResolveCohortOptions, \"onPageFetched\"> = {},",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 17,
+              "sign": "+",
+              "text": "): Promise<Cohort> => {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 18,
+              "sign": "+",
+              "text": "  const cohort = await resolveCohortWithoutMetrics({",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 19,
+              "sign": "+",
+              "text": "    ...options,",
+              "decision": null
+            },
+            {
+              "old": 21,
+              "new": 20,
+              "sign": " ",
+              "text": "    // Fire-and-forget: a transient metric-backend failure must not abort the",
+              "decision": null
+            },
+            {
+              "old": 22,
+              "new": 21,
+              "sign": " ",
+              "text": "    // batch mid-pagination and discard successful DDB reads.",
+              "decision": null
+            },
+            {
+              "old": 23,
+              "new": null,
+              "sign": "-",
+              "text": "    void DefaultStats.sendCounter(BATCH_METRICS.COHORT.PAGE_FETCHED, 1, []).catch((error) => {",
+              "decision": null
+            },
+            {
+              "old": 24,
+              "new": null,
+              "sign": "-",
+              "text": "      logger.logError(error, \"failed to emit cohort page counter\");",
+              "decision": null
+            },
+            {
+              "old": 25,
+              "new": null,
+              "sign": "-",
+              "text": "    });",
+              "decision": null
+            },
+            {
+              "old": 26,
+              "new": null,
+              "sign": "-",
+              "text": "    cursor = page.nextCursor;",
+              "decision": null
+            },
+            {
+              "old": 27,
+              "new": null,
+              "sign": "-",
+              "text": "  } while (cursor !== undefined);",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 22,
+              "sign": "+",
+              "text": "    onPageFetched: () => {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 23,
+              "sign": "+",
+              "text": "      void DefaultStats.sendCounter(BATCH_METRICS.COHORT.PAGE_FETCHED, 1, []).catch((error) => {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 24,
+              "sign": "+",
+              "text": "        logger.logError(error, \"failed to emit cohort page counter\");",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 25,
+              "sign": "+",
+              "text": "      });",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 26,
+              "sign": "+",
+              "text": "    },",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 27,
+              "sign": "+",
+              "text": "  });",
+              "decision": null
+            },
+            {
+              "old": 28,
+              "new": 28,
+              "sign": " ",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": 29,
+              "new": null,
+              "sign": "-",
+              "text": "  const size = practices.length;",
+              "decision": null
+            },
+            {
+              "old": 30,
+              "new": 29,
+              "sign": " ",
+              "text": "  // Fire-and-forget for the same reason as the page counter above: a transient",
+              "decision": null
+            },
+            {
+              "old": 31,
+              "new": 30,
+              "sign": " ",
+              "text": "  // metric-backend failure must not fail an otherwise-successful cohort resolve.",
+              "decision": null
+            },
+            {
+              "old": 32,
+              "new": null,
+              "sign": "-",
+              "text": "  void DefaultStats.sendGauge(BATCH_METRICS.COHORT.SIZE, size, []).catch((error) => {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 31,
+              "sign": "+",
+              "text": "  void DefaultStats.sendGauge(BATCH_METRICS.COHORT.SIZE, cohort.size, []).catch((error) => {",
+              "decision": null
+            },
+            {
+              "old": 33,
+              "new": 32,
+              "sign": " ",
+              "text": "    logger.logError(error, \"failed to emit cohort size gauge\");",
+              "decision": null
+            },
+            {
+              "old": 34,
+              "new": 33,
+              "sign": " ",
+              "text": "  });",
+              "decision": null
+            },
+            {
+              "old": 35,
+              "new": null,
+              "sign": "-",
+              "text": "  return { practices, size };",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 34,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 35,
+              "sign": "+",
+              "text": "  return cohort;",
+              "decision": null
+            },
+            {
+              "old": 36,
+              "new": 36,
+              "sign": " ",
+              "text": "};",
+              "decision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/jobs/batch-runner/src/services/guards.ts",
+      "bucket": "explained",
+      "byDecisions": [
+        "d1"
+      ],
+      "hunks": [
+        {
+          "header": "@@ -1,34 +1,15 @@",
+          "lines": [
+            {
+              "old": 1,
+              "new": null,
+              "sign": "-",
+              "text": "import type { Practice } from \"@attribution-service/data\";",
+              "decision": null
+            },
+            {
+              "old": 2,
+              "new": 1,
+              "sign": " ",
+              "text": "import { DefaultStats } from \"@pathccm/observability\";",
+              "decision": "d1"
+            },
+            {
+              "old": 3,
+              "new": 2,
+              "sign": " ",
+              "text": "import { logger } from \"../util/logger\";",
+              "decision": "d1"
+            },
+            {
+              "old": 4,
+              "new": 3,
+              "sign": " ",
+              "text": "import { BATCH_METRICS, METRIC_TAG_KEY } from \"../util/metrics\";",
+              "decision": "d1"
+            },
+            {
+              "old": 5,
+              "new": null,
+              "sign": "-",
+              "text": "import { SkipReason } from \"./skip-reason\";",
+              "decision": null
+            },
+            {
+              "old": 6,
+              "new": null,
+              "sign": "-",
+              "text": "import type { GuardDecision, PracticeSkipEmission, PracticeWithGuardFields } from \"./types\";",
+              "decision": null
+            },
+            {
+              "old": 7,
+              "new": null,
+              "sign": "-",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": 8,
+              "new": null,
+              "sign": "-",
+              "text": "export const hasPracticeContactEmail = (practice: Practice): boolean => {",
+              "decision": null
+            },
+            {
+              "old": 9,
+              "new": null,
+              "sign": "-",
+              "text": "  return practice.practiceEmail != null && practice.practiceEmail.trim().length > 0;",
+              "decision": null
+            },
+            {
+              "old": 10,
+              "new": null,
+              "sign": "-",
+              "text": "};",
+              "decision": null
+            },
+            {
+              "old": 11,
+              "new": null,
+              "sign": "-",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": 12,
+              "new": null,
+              "sign": "-",
+              "text": "// Local stub until NEV-1412 lands the real predicate; consumed via import so",
+              "decision": null
+            },
+            {
+              "old": 13,
+              "new": null,
+              "sign": "-",
+              "text": "// the drop-in swap is a one-line change.",
+              "decision": null
+            },
+            {
+              "old": 14,
+              "new": null,
+              "sign": "-",
+              "text": "// TODO(NEV-1412): replace with imported predicate from opt-out module.",
+              "decision": null
+            },
+            {
+              "old": 15,
+              "new": null,
+              "sign": "-",
+              "text": "export const isPracticeOptedOut = (practice: Practice): boolean => {",
+              "decision": null
+            },
+            {
+              "old": 16,
+              "new": null,
+              "sign": "-",
+              "text": "  return (practice as PracticeWithGuardFields).optedOut === true;",
+              "decision": null
+            },
+            {
+              "old": 17,
+              "new": null,
+              "sign": "-",
+              "text": "};",
+              "decision": null
+            },
+            {
+              "old": 18,
+              "new": null,
+              "sign": "-",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": 19,
+              "new": null,
+              "sign": "-",
+              "text": "export const evaluateGuards = (practice: Practice): GuardDecision => {",
+              "decision": null
+            },
+            {
+              "old": 20,
+              "new": null,
+              "sign": "-",
+              "text": "  if (isPracticeOptedOut(practice)) {",
+              "decision": null
+            },
+            {
+              "old": 21,
+              "new": null,
+              "sign": "-",
+              "text": "    return { decision: \"SKIP\", reason: SkipReason.OPTED_OUT };",
+              "decision": null
+            },
+            {
+              "old": 22,
+              "new": null,
+              "sign": "-",
+              "text": "  }",
+              "decision": null
+            },
+            {
+              "old": 23,
+              "new": null,
+              "sign": "-",
+              "text": "  if (!hasPracticeContactEmail(practice)) {",
+              "decision": null
+            },
+            {
+              "old": 24,
+              "new": null,
+              "sign": "-",
+              "text": "    return { decision: \"SKIP\", reason: SkipReason.NO_PRACTICE_CONTACT_EMAIL };",
+              "decision": null
+            },
+            {
+              "old": 25,
+              "new": null,
+              "sign": "-",
+              "text": "  }",
+              "decision": null
+            },
+            {
+              "old": 26,
+              "new": null,
+              "sign": "-",
+              "text": "  return { decision: \"PROCEED\" };",
+              "decision": null
+            },
+            {
+              "old": 27,
+              "new": null,
+              "sign": "-",
+              "text": "};",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 4,
+              "sign": "+",
+              "text": "import type { PracticeSkipEmission } from \"./types\";",
+              "decision": "d1"
+            },
+            {
+              "old": 28,
+              "new": 5,
+              "sign": " ",
+              "text": "",
+              "decision": "d1"
+            },
+            {
+              "old": 29,
+              "new": 6,
+              "sign": " ",
+              "text": "// Guard-emit boundary: every skip goes through this single function so the",
+              "decision": "d1"
+            },
+            {
+              "old": 30,
+              "new": 7,
+              "sign": " ",
+              "text": "// counter name and tag shape stay in one place. Never emit a per-reason",
+              "decision": "d1"
+            },
+            {
+              "old": 31,
+              "new": 8,
+              "sign": " ",
+              "text": "// metric name — reason is a tag, not a suffix.",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 9,
+              "sign": "+",
+              "text": "//",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 10,
+              "sign": "+",
+              "text": "// The guard predicates live in @attribution-service/practice-cohort so the",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 11,
+              "sign": "+",
+              "text": "// dashboard preview evaluates the same rules; this emitter stays here because",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 12,
+              "sign": "+",
+              "text": "// a preview must not move batch counters.",
+              "decision": "d1"
+            },
+            {
+              "old": 32,
+              "new": 13,
+              "sign": " ",
+              "text": "export const emitPracticeSkipped = ({ practiceId, reason }: PracticeSkipEmission): void => {",
+              "decision": "d1"
+            },
+            {
+              "old": 33,
+              "new": 14,
+              "sign": " ",
+              "text": "  void DefaultStats.sendCounter(BATCH_METRICS.PRACTICE.SKIPPED, 1, [",
+              "decision": "d1"
+            },
+            {
+              "old": 34,
+              "new": 15,
+              "sign": " ",
+              "text": "    { key: METRIC_TAG_KEY.REASON, value: reason },",
+              "decision": "d1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/jobs/batch-runner/src/services/loop.ts",
+      "bucket": null,
+      "byDecisions": [],
+      "hunks": [
+        {
+          "header": "@@ -1,11 +1,10 @@",
+          "lines": [
+            {
+              "old": 1,
+              "new": 1,
+              "sign": " ",
+              "text": "import type { Practice } from \"@attribution-service/data\";",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 2,
+              "sign": "+",
+              "text": "import { type Cohort, evaluateGuards, SkipReason } from \"@attribution-service/practice-cohort\";",
+              "decision": null
+            },
+            {
+              "old": 2,
+              "new": 3,
+              "sign": " ",
+              "text": "import { DefaultStats } from \"@pathccm/observability\";",
+              "decision": null
+            },
+            {
+              "old": 3,
+              "new": 4,
+              "sign": " ",
+              "text": "import { logContext, logger } from \"../util/logger\";",
+              "decision": null
+            },
+            {
+              "old": 4,
+              "new": 5,
+              "sign": " ",
+              "text": "import { BATCH_METRICS, METRIC_TAG_KEY } from \"../util/metrics\";",
+              "decision": null
+            },
+            {
+              "old": 5,
+              "new": null,
+              "sign": "-",
+              "text": "import type { Cohort } from \"../util/types\";",
+              "decision": null
+            },
+            {
+              "old": 6,
+              "new": null,
+              "sign": "-",
+              "text": "import { emitPracticeSkipped, evaluateGuards } from \"./guards\";",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 6,
+              "sign": "+",
+              "text": "import { emitPracticeSkipped } from \"./guards\";",
+              "decision": null
+            },
+            {
+              "old": 7,
+              "new": 7,
+              "sign": " ",
+              "text": "import { isSkippedOutcome, OUTCOME_TO_SKIP_REASON } from \"./outcome\";",
+              "decision": null
+            },
+            {
+              "old": 8,
+              "new": null,
+              "sign": "-",
+              "text": "import { SkipReason } from \"./skip-reason\";",
+              "decision": null
+            },
+            {
+              "old": 9,
+              "new": 8,
+              "sign": " ",
+              "text": "import {",
+              "decision": null
+            },
+            {
+              "old": 10,
+              "new": 9,
+              "sign": " ",
+              "text": "  type IsSendEnabledForPractice,",
+              "decision": null
+            },
+            {
+              "old": 11,
+              "new": 10,
+              "sign": " ",
+              "text": "  OUTCOME_KIND,",
+              "decision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/jobs/batch-runner/src/services/outcome.ts",
+      "bucket": null,
+      "byDecisions": [],
+      "hunks": [
+        {
+          "header": "@@ -1,4 +1,4 @@",
+          "lines": [
+            {
+              "old": 1,
+              "new": null,
+              "sign": "-",
+              "text": "import { SkipReason } from \"./skip-reason\";",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 1,
+              "sign": "+",
+              "text": "import { SkipReason } from \"@attribution-service/practice-cohort\";",
+              "decision": null
+            },
+            {
+              "old": 2,
+              "new": 2,
+              "sign": " ",
+              "text": "import {",
+              "decision": null
+            },
+            {
+              "old": 3,
+              "new": 3,
+              "sign": " ",
+              "text": "  OUTCOME_KIND,",
+              "decision": null
+            },
+            {
+              "old": 4,
+              "new": 4,
+              "sign": " ",
+              "text": "  type PracticeOutcome,",
+              "decision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/jobs/batch-runner/src/services/types.ts",
+      "bucket": null,
+      "byDecisions": [],
+      "hunks": [
+        {
+          "header": "@@ -1,11 +1,5 @@",
+          "lines": [
+            {
+              "old": 1,
+              "new": 1,
+              "sign": " ",
+              "text": "import type { Practice } from \"@attribution-service/data\";",
+              "decision": null
+            },
+            {
+              "old": 2,
+              "new": null,
+              "sign": "-",
+              "text": "import type { SkipReason } from \"./skip-reason\";",
+              "decision": null
+            },
+            {
+              "old": 3,
+              "new": null,
+              "sign": "-",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": 4,
+              "new": null,
+              "sign": "-",
+              "text": "export type PracticeWithGuardFields = Practice & {",
+              "decision": null
+            },
+            {
+              "old": 5,
+              "new": null,
+              "sign": "-",
+              "text": "  optedOut?: boolean;",
+              "decision": null
+            },
+            {
+              "old": 6,
+              "new": null,
+              "sign": "-",
+              "text": "};",
+              "decision": null
+            },
+            {
+              "old": 7,
+              "new": null,
+              "sign": "-",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": 8,
+              "new": null,
+              "sign": "-",
+              "text": "export type GuardDecision = { decision: \"PROCEED\" } | { decision: \"SKIP\"; reason: SkipReason };",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 2,
+              "sign": "+",
+              "text": "import type { SkipReason } from \"@attribution-service/practice-cohort\";",
+              "decision": null
+            },
+            {
+              "old": 9,
+              "new": 3,
+              "sign": " ",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": 10,
+              "new": 4,
+              "sign": " ",
+              "text": "export interface PracticeSkipEmission {",
+              "decision": null
+            },
+            {
+              "old": 11,
+              "new": 5,
+              "sign": " ",
+              "text": "  practiceId: string;",
+              "decision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/jobs/batch-runner/src/util/types.ts",
+      "bucket": null,
+      "byDecisions": [],
+      "hunks": [
+        {
+          "header": "@@ -1,5 +1,3 @@",
+          "lines": [
+            {
+              "old": 1,
+              "new": null,
+              "sign": "-",
+              "text": "import type { Practice } from \"@attribution-service/data\";",
+              "decision": null
+            },
+            {
+              "old": 2,
+              "new": null,
+              "sign": "-",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": 3,
+              "new": 1,
+              "sign": " ",
+              "text": "export type OnShutdownHook = () => void | Promise<void>;",
+              "decision": null
+            },
+            {
+              "old": 4,
+              "new": 2,
+              "sign": " ",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": 5,
+              "new": 3,
+              "sign": " ",
+              "text": "export interface BootstrapDeps {",
+              "decision": null
+            }
+          ]
+        },
+        {
+          "header": "@@ -8,15 +6,6 @@",
+          "lines": [
+            {
+              "old": 8,
+              "new": 6,
+              "sign": " ",
+              "text": "  onShutdown?: OnShutdownHook;",
+              "decision": null
+            },
+            {
+              "old": 9,
+              "new": 7,
+              "sign": " ",
+              "text": "}",
+              "decision": null
+            },
+            {
+              "old": 10,
+              "new": 8,
+              "sign": " ",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": 11,
+              "new": null,
+              "sign": "-",
+              "text": "export interface ResolveCohortOptions {",
+              "decision": null
+            },
+            {
+              "old": 12,
+              "new": null,
+              "sign": "-",
+              "text": "  pageSize?: number;",
+              "decision": null
+            },
+            {
+              "old": 13,
+              "new": null,
+              "sign": "-",
+              "text": "}",
+              "decision": null
+            },
+            {
+              "old": 14,
+              "new": null,
+              "sign": "-",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": 15,
+              "new": null,
+              "sign": "-",
+              "text": "export interface Cohort {",
+              "decision": null
+            },
+            {
+              "old": 16,
+              "new": null,
+              "sign": "-",
+              "text": "  practices: Practice[];",
+              "decision": null
+            },
+            {
+              "old": 17,
+              "new": null,
+              "sign": "-",
+              "text": "  size: number;",
+              "decision": null
+            },
+            {
+              "old": 18,
+              "new": null,
+              "sign": "-",
+              "text": "}",
+              "decision": null
+            },
+            {
+              "old": 19,
+              "new": null,
+              "sign": "-",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": 20,
+              "new": 9,
+              "sign": " ",
+              "text": "export interface S3ClientConfigInput {",
+              "decision": null
+            },
+            {
+              "old": 21,
+              "new": 10,
+              "sign": " ",
+              "text": "  S3_HANDOFF_BUCKET: string;",
+              "decision": null
+            },
+            {
+              "old": 22,
+              "new": 11,
+              "sign": " ",
+              "text": "  AWS_REGION: string;",
+              "decision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/jobs/batch-runner/tsconfig.json",
+      "bucket": null,
+      "byDecisions": [],
+      "hunks": [
+        {
+          "header": "@@ -15,6 +15,9 @@",
+          "lines": [
+            {
+              "old": 15,
+              "new": 15,
+              "sign": " ",
+              "text": "    {",
+              "decision": null
+            },
+            {
+              "old": 16,
+              "new": 16,
+              "sign": " ",
+              "text": "      \"path\": \"../../../packages/pdf-renderer\"",
+              "decision": null
+            },
+            {
+              "old": 17,
+              "new": 17,
+              "sign": " ",
+              "text": "    },",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 18,
+              "sign": "+",
+              "text": "    {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 19,
+              "sign": "+",
+              "text": "      \"path\": \"../../../packages/practice-cohort\"",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 20,
+              "sign": "+",
+              "text": "    },",
+              "decision": null
+            },
+            {
+              "old": 18,
+              "new": 21,
+              "sign": " ",
+              "text": "    {",
+              "decision": null
+            },
+            {
+              "old": 19,
+              "new": 22,
+              "sign": " ",
+              "text": "      \"path\": \"../../../packages/reporting\"",
+              "decision": null
+            },
+            {
+              "old": 20,
+              "new": 23,
+              "sign": " ",
+              "text": "    },",
+              "decision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "packages/practice-cohort/package.json",
+      "bucket": "explained",
+      "byDecisions": [
+        "d4"
+      ],
+      "hunks": [
+        {
+          "header": "@@ -0,0 +1,34 @@",
+          "lines": [
+            {
+              "old": null,
+              "new": 1,
+              "sign": "+",
+              "text": "{",
+              "decision": "d4"
+            },
+            {
+              "old": null,
+              "new": 2,
+              "sign": "+",
+              "text": "  \"name\": \"@attribution-service/practice-cohort\",",
+              "decision": "d4"
+            },
+            {
+              "old": null,
+              "new": 3,
+              "sign": "+",
+              "text": "  \"version\": \"1.0.0\",",
+              "decision": "d4"
+            },
+            {
+              "old": null,
+              "new": 4,
+              "sign": "+",
+              "text": "  \"private\": true,",
+              "decision": "d4"
+            },
+            {
+              "old": null,
+              "new": 5,
+              "sign": "+",
+              "text": "  \"main\": \"./dist/index.js\",",
+              "decision": "d4"
+            },
+            {
+              "old": null,
+              "new": 6,
+              "sign": "+",
+              "text": "  \"types\": \"./dist/index.d.ts\",",
+              "decision": "d4"
+            },
+            {
+              "old": null,
+              "new": 7,
+              "sign": "+",
+              "text": "  \"exports\": {",
+              "decision": "d4"
+            },
+            {
+              "old": null,
+              "new": 8,
+              "sign": "+",
+              "text": "    \".\": {",
+              "decision": "d4"
+            },
+            {
+              "old": null,
+              "new": 9,
+              "sign": "+",
+              "text": "      \"types\": \"./dist/index.d.ts\",",
+              "decision": "d4"
+            },
+            {
+              "old": null,
+              "new": 10,
+              "sign": "+",
+              "text": "      \"default\": \"./dist/index.js\"",
+              "decision": "d4"
+            },
+            {
+              "old": null,
+              "new": 11,
+              "sign": "+",
+              "text": "    }",
+              "decision": "d4"
+            },
+            {
+              "old": null,
+              "new": 12,
+              "sign": "+",
+              "text": "  },",
+              "decision": "d4"
+            },
+            {
+              "old": null,
+              "new": 13,
+              "sign": "+",
+              "text": "  \"typesVersions\": {",
+              "decision": "d4"
+            },
+            {
+              "old": null,
+              "new": 14,
+              "sign": "+",
+              "text": "    \"*\": {",
+              "decision": "d4"
+            },
+            {
+              "old": null,
+              "new": 15,
+              "sign": "+",
+              "text": "      \"*\": [",
+              "decision": "d4"
+            },
+            {
+              "old": null,
+              "new": 16,
+              "sign": "+",
+              "text": "        \"./dist/*\"",
+              "decision": "d4"
+            },
+            {
+              "old": null,
+              "new": 17,
+              "sign": "+",
+              "text": "      ]",
+              "decision": "d4"
+            },
+            {
+              "old": null,
+              "new": 18,
+              "sign": "+",
+              "text": "    }",
+              "decision": "d4"
+            },
+            {
+              "old": null,
+              "new": 19,
+              "sign": "+",
+              "text": "  },",
+              "decision": "d4"
+            },
+            {
+              "old": null,
+              "new": 20,
+              "sign": "+",
+              "text": "  \"scripts\": {",
+              "decision": "d4"
+            },
+            {
+              "old": null,
+              "new": 21,
+              "sign": "+",
+              "text": "    \"build\": \"tsc --build\",",
+              "decision": "d4"
+            },
+            {
+              "old": null,
+              "new": 22,
+              "sign": "+",
+              "text": "    \"test\": \"vitest run --reporter=verbose .\",",
+              "decision": "d4"
+            },
+            {
+              "old": null,
+              "new": 23,
+              "sign": "+",
+              "text": "    \"test:watch\": \"vitest watch --no-file-parallelism .\",",
+              "decision": "d4"
+            },
+            {
+              "old": null,
+              "new": 24,
+              "sign": "+",
+              "text": "    \"test:coverage\": \"vitest run --reporter=verbose --coverage .\"",
+              "decision": "d4"
+            },
+            {
+              "old": null,
+              "new": 25,
+              "sign": "+",
+              "text": "  },",
+              "decision": "d4"
+            },
+            {
+              "old": null,
+              "new": 26,
+              "sign": "+",
+              "text": "  \"dependencies\": {",
+              "decision": "d4"
+            },
+            {
+              "old": null,
+              "new": 27,
+              "sign": "+",
+              "text": "    \"@attribution-service/data\": \"workspace:^\"",
+              "decision": "d4"
+            },
+            {
+              "old": null,
+              "new": 28,
+              "sign": "+",
+              "text": "  },",
+              "decision": "d4"
+            },
+            {
+              "old": null,
+              "new": 29,
+              "sign": "+",
+              "text": "  \"devDependencies\": {",
+              "decision": "d4"
+            },
+            {
+              "old": null,
+              "new": 30,
+              "sign": "+",
+              "text": "    \"@aws-sdk/client-dynamodb\": \"^3.1096.0\",",
+              "decision": "d4"
+            },
+            {
+              "old": null,
+              "new": 31,
+              "sign": "+",
+              "text": "    \"vitest\": \"^4.1.2\",",
+              "decision": "d4"
+            },
+            {
+              "old": null,
+              "new": 32,
+              "sign": "+",
+              "text": "    \"zod\": \"^4.4.3\"",
+              "decision": "d4"
+            },
+            {
+              "old": null,
+              "new": 33,
+              "sign": "+",
+              "text": "  }",
+              "decision": "d4"
+            },
+            {
+              "old": null,
+              "new": 34,
+              "sign": "+",
+              "text": "}",
+              "decision": "d4"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "packages/practice-cohort/src/__tests__/cohort.test.ts",
+      "bucket": null,
+      "byDecisions": [],
+      "hunks": [
+        {
+          "header": "@@ -0,0 +1,78 @@",
+          "lines": [
+            {
+              "old": null,
+              "new": 1,
+              "sign": "+",
+              "text": "import { clearAllItems, PracticeStatus, practiceRepository } from \"@attribution-service/data\";",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 2,
+              "sign": "+",
+              "text": "import { afterEach, describe, expect, it, vi } from \"vitest\";",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 3,
+              "sign": "+",
+              "text": "import { resolveCohort } from \"../cohort\";",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 4,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 5,
+              "sign": "+",
+              "text": "const seedPractices = async (count: number, status: PracticeStatus) => {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 6,
+              "sign": "+",
+              "text": "  const paddingWidth = String(count).length;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 7,
+              "sign": "+",
+              "text": "  await Promise.all(",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 8,
+              "sign": "+",
+              "text": "    Array.from({ length: count }, (_, i) => {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 9,
+              "sign": "+",
+              "text": "      const id = `ACCT-${String(i + 1).padStart(paddingWidth, \"0\")}`;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 10,
+              "sign": "+",
+              "text": "      return practiceRepository.upsertPractice({",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 11,
+              "sign": "+",
+              "text": "        id,",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 12,
+              "sign": "+",
+              "text": "        name: `Practice ${id}`,",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 13,
+              "sign": "+",
+              "text": "        status,",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 14,
+              "sign": "+",
+              "text": "        accountManager: \"Test Manager\",",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 15,
+              "sign": "+",
+              "text": "      });",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 16,
+              "sign": "+",
+              "text": "    }),",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 17,
+              "sign": "+",
+              "text": "  );",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 18,
+              "sign": "+",
+              "text": "};",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 19,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 20,
+              "sign": "+",
+              "text": "describe(\"resolveCohort\", () => {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 21,
+              "sign": "+",
+              "text": "  afterEach(async () => {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 22,
+              "sign": "+",
+              "text": "    await clearAllItems();",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 23,
+              "sign": "+",
+              "text": "  });",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 24,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 25,
+              "sign": "+",
+              "text": "  it(\"returns every SOLD practice exactly once when paginating GSI reads\", async () => {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 26,
+              "sign": "+",
+              "text": "    await seedPractices(50, PracticeStatus.SOLD);",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 27,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 28,
+              "sign": "+",
+              "text": "    const cohort = await resolveCohort({ pageSize: 10 });",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 29,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 30,
+              "sign": "+",
+              "text": "    expect(cohort.size).toBe(50);",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 31,
+              "sign": "+",
+              "text": "    expect(new Set(cohort.practices.map((p) => p.id)).size).toBe(50);",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 32,
+              "sign": "+",
+              "text": "  });",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 33,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 34,
+              "sign": "+",
+              "text": "  it(\"excludes non-SOLD practices from the cohort\", async () => {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 35,
+              "sign": "+",
+              "text": "    await seedPractices(5, PracticeStatus.SOLD);",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 36,
+              "sign": "+",
+              "text": "    await practiceRepository.upsertPractice({",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 37,
+              "sign": "+",
+              "text": "      id: \"CHURN-1\",",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 38,
+              "sign": "+",
+              "text": "      name: \"Churned Practice\",",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 39,
+              "sign": "+",
+              "text": "      status: PracticeStatus.CHURNED,",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 40,
+              "sign": "+",
+              "text": "      accountManager: \"Test\",",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 41,
+              "sign": "+",
+              "text": "    });",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 42,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 43,
+              "sign": "+",
+              "text": "    const cohort = await resolveCohort({ pageSize: 10 });",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 44,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 45,
+              "sign": "+",
+              "text": "    expect(cohort.size).toBe(5);",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 46,
+              "sign": "+",
+              "text": "    expect(cohort.practices.map((p) => p.id)).not.toContain(\"CHURN-1\");",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 47,
+              "sign": "+",
+              "text": "  });",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 48,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 49,
+              "sign": "+",
+              "text": "  it(\"serves the cohort from the status GSI rather than a table scan\", async () => {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 50,
+              "sign": "+",
+              "text": "    await seedPractices(3, PracticeStatus.SOLD);",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 51,
+              "sign": "+",
+              "text": "    const listSpy = vi.spyOn(practiceRepository, \"listPracticesByStatus\");",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 52,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 53,
+              "sign": "+",
+              "text": "    await resolveCohort({ pageSize: 2 });",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 54,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 55,
+              "sign": "+",
+              "text": "    expect(listSpy).toHaveBeenCalled();",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 56,
+              "sign": "+",
+              "text": "    for (const call of listSpy.mock.calls) {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 57,
+              "sign": "+",
+              "text": "      expect(call[0]).toBe(PracticeStatus.SOLD);",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 58,
+              "sign": "+",
+              "text": "    }",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 59,
+              "sign": "+",
+              "text": "    listSpy.mockRestore();",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 60,
+              "sign": "+",
+              "text": "  });",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 61,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 62,
+              "sign": "+",
+              "text": "  it(\"invokes onPageFetched once per page so the caller owns metric emission\", async () => {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 63,
+              "sign": "+",
+              "text": "    await seedPractices(50, PracticeStatus.SOLD);",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 64,
+              "sign": "+",
+              "text": "    const onPageFetched = vi.fn();",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 65,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 66,
+              "sign": "+",
+              "text": "    await resolveCohort({ pageSize: 10, onPageFetched });",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 67,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 68,
+              "sign": "+",
+              "text": "    expect(onPageFetched.mock.calls.length).toBeGreaterThanOrEqual(5);",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 69,
+              "sign": "+",
+              "text": "  });",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 70,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 71,
+              "sign": "+",
+              "text": "  it(\"resolves without a callback, so a read-only caller emits nothing\", async () => {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 72,
+              "sign": "+",
+              "text": "    await seedPractices(4, PracticeStatus.SOLD);",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 73,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 74,
+              "sign": "+",
+              "text": "    const cohort = await resolveCohort({ pageSize: 2 });",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 75,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 76,
+              "sign": "+",
+              "text": "    expect(cohort.size).toBe(4);",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 77,
+              "sign": "+",
+              "text": "  });",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 78,
+              "sign": "+",
+              "text": "});",
+              "decision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "packages/practice-cohort/src/__tests__/guards.test.ts",
+      "bucket": null,
+      "byDecisions": [],
+      "hunks": [
+        {
+          "header": "@@ -1,8 +1,8 @@",
+          "lines": [
+            {
+              "old": 1,
+              "new": 1,
+              "sign": " ",
+              "text": "import type { Practice } from \"@attribution-service/data\";",
+              "decision": null
+            },
+            {
+              "old": 2,
+              "new": 2,
+              "sign": " ",
+              "text": "import { PracticeStatus } from \"@attribution-service/data\";",
+              "decision": null
+            },
+            {
+              "old": 3,
+              "new": 3,
+              "sign": " ",
+              "text": "import { describe, expect, it } from \"vitest\";",
+              "decision": null
+            },
+            {
+              "old": 4,
+              "new": null,
+              "sign": "-",
+              "text": "import { evaluateGuards } from \"../../services/guards\";",
+              "decision": null
+            },
+            {
+              "old": 5,
+              "new": null,
+              "sign": "-",
+              "text": "import { SkipReason } from \"../../services/skip-reason\";",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 4,
+              "sign": "+",
+              "text": "import { evaluateGuards } from \"../guards\";",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 5,
+              "sign": "+",
+              "text": "import { SkipReason } from \"../skip-reason\";",
+              "decision": null
+            },
+            {
+              "old": 6,
+              "new": 6,
+              "sign": " ",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": 7,
+              "new": 7,
+              "sign": " ",
+              "text": "const buildPractice = (overrides: Record<string, unknown> = {}): Practice =>",
+              "decision": null
+            },
+            {
+              "old": 8,
+              "new": 8,
+              "sign": " ",
+              "text": "  ({",
+              "decision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "packages/practice-cohort/src/__tests__/package-boundary.test.ts",
+      "bucket": "explained",
+      "byDecisions": [
+        "d3"
+      ],
+      "hunks": [
+        {
+          "header": "@@ -0,0 +1,25 @@",
+          "lines": [
+            {
+              "old": null,
+              "new": 1,
+              "sign": "+",
+              "text": "import { readFileSync } from \"node:fs\";",
+              "decision": "d3"
+            },
+            {
+              "old": null,
+              "new": 2,
+              "sign": "+",
+              "text": "import { describe, expect, it } from \"vitest\";",
+              "decision": "d3"
+            },
+            {
+              "old": null,
+              "new": 3,
+              "sign": "+",
+              "text": "import { SkipReason } from \"../skip-reason\";",
+              "decision": "d3"
+            },
+            {
+              "old": null,
+              "new": 4,
+              "sign": "+",
+              "text": "",
+              "decision": "d3"
+            },
+            {
+              "old": null,
+              "new": 5,
+              "sign": "+",
+              "text": "const packageJson = JSON.parse(",
+              "decision": "d3"
+            },
+            {
+              "old": null,
+              "new": 6,
+              "sign": "+",
+              "text": "  readFileSync(new URL(\"../../package.json\", import.meta.url), \"utf8\"),",
+              "decision": "d3"
+            },
+            {
+              "old": null,
+              "new": 7,
+              "sign": "+",
+              "text": ") as { dependencies?: Record<string, string> };",
+              "decision": "d3"
+            },
+            {
+              "old": null,
+              "new": 8,
+              "sign": "+",
+              "text": "",
+              "decision": "d3"
+            },
+            {
+              "old": null,
+              "new": 9,
+              "sign": "+",
+              "text": "describe(\"package boundary\", () => {",
+              "decision": "d3"
+            },
+            {
+              "old": null,
+              "new": 10,
+              "sign": "+",
+              "text": "  it(\"declares no observability dependency, so a preview cannot move batch counters\", () => {",
+              "decision": "d3"
+            },
+            {
+              "old": null,
+              "new": 11,
+              "sign": "+",
+              "text": "    const dependencies = Object.keys(packageJson.dependencies ?? {});",
+              "decision": "d3"
+            },
+            {
+              "old": null,
+              "new": 12,
+              "sign": "+",
+              "text": "",
+              "decision": "d3"
+            },
+            {
+              "old": null,
+              "new": 13,
+              "sign": "+",
+              "text": "    expect(dependencies).toEqual([\"@attribution-service/data\"]);",
+              "decision": "d3"
+            },
+            {
+              "old": null,
+              "new": 14,
+              "sign": "+",
+              "text": "    expect(dependencies).not.toContain(\"@pathccm/observability\");",
+              "decision": "d3"
+            },
+            {
+              "old": null,
+              "new": 15,
+              "sign": "+",
+              "text": "  });",
+              "decision": "d3"
+            },
+            {
+              "old": null,
+              "new": 16,
+              "sign": "+",
+              "text": "",
+              "decision": "d3"
+            },
+            {
+              "old": null,
+              "new": 17,
+              "sign": "+",
+              "text": "  it(\"retains all four SkipReason members\", () => {",
+              "decision": "d3"
+            },
+            {
+              "old": null,
+              "new": 18,
+              "sign": "+",
+              "text": "    expect(Object.keys(SkipReason).sort()).toEqual([",
+              "decision": "d3"
+            },
+            {
+              "old": null,
+              "new": 19,
+              "sign": "+",
+              "text": "      \"BELOW_REFERRAL_FLOOR\",",
+              "decision": "d3"
+            },
+            {
+              "old": null,
+              "new": 20,
+              "sign": "+",
+              "text": "      \"FLAG_OFF\",",
+              "decision": "d3"
+            },
+            {
+              "old": null,
+              "new": 21,
+              "sign": "+",
+              "text": "      \"NO_PRACTICE_CONTACT_EMAIL\",",
+              "decision": "d3"
+            },
+            {
+              "old": null,
+              "new": 22,
+              "sign": "+",
+              "text": "      \"OPTED_OUT\",",
+              "decision": "d3"
+            },
+            {
+              "old": null,
+              "new": 23,
+              "sign": "+",
+              "text": "    ]);",
+              "decision": "d3"
+            },
+            {
+              "old": null,
+              "new": 24,
+              "sign": "+",
+              "text": "  });",
+              "decision": "d3"
+            },
+            {
+              "old": null,
+              "new": 25,
+              "sign": "+",
+              "text": "});",
+              "decision": "d3"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "packages/practice-cohort/src/cohort.ts",
+      "bucket": "explained",
+      "byDecisions": [
+        "d2"
+      ],
+      "hunks": [
+        {
+          "header": "@@ -0,0 +1,31 @@",
+          "lines": [
+            {
+              "old": null,
+              "new": 1,
+              "sign": "+",
+              "text": "import { type Practice, PracticeStatus, practiceRepository } from \"@attribution-service/data\";",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 2,
+              "sign": "+",
+              "text": "import type { Cohort, ResolveCohortOptions } from \"./types\";",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 3,
+              "sign": "+",
+              "text": "",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 4,
+              "sign": "+",
+              "text": "const DEFAULT_PAGE_SIZE = 100;",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 5,
+              "sign": "+",
+              "text": "",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 6,
+              "sign": "+",
+              "text": "/**",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 7,
+              "sign": "+",
+              "text": " * Selects every SOLD practice, paginating to completion.",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 8,
+              "sign": "+",
+              "text": " *",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 9,
+              "sign": "+",
+              "text": " * Metric emission is the caller's concern: batch-runner passes onPageFetched",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 10,
+              "sign": "+",
+              "text": " * and emits its own size gauge, while the dashboard preview passes neither so",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 11,
+              "sign": "+",
+              "text": " * a read-only preview cannot move a batch counter.",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 12,
+              "sign": "+",
+              "text": " */",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 13,
+              "sign": "+",
+              "text": "export const resolveCohort = async ({",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 14,
+              "sign": "+",
+              "text": "  pageSize = DEFAULT_PAGE_SIZE,",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 15,
+              "sign": "+",
+              "text": "  onPageFetched,",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 16,
+              "sign": "+",
+              "text": "}: ResolveCohortOptions = {}): Promise<Cohort> => {",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 17,
+              "sign": "+",
+              "text": "  const practices: Practice[] = [];",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 18,
+              "sign": "+",
+              "text": "  let cursor: string | undefined;",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 19,
+              "sign": "+",
+              "text": "  do {",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 20,
+              "sign": "+",
+              "text": "    const page = await practiceRepository.listPracticesByStatus(",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 21,
+              "sign": "+",
+              "text": "      PracticeStatus.SOLD,",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 22,
+              "sign": "+",
+              "text": "      pageSize,",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 23,
+              "sign": "+",
+              "text": "      cursor,",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 24,
+              "sign": "+",
+              "text": "    );",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 25,
+              "sign": "+",
+              "text": "    practices.push(...page.practices);",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 26,
+              "sign": "+",
+              "text": "    onPageFetched?.();",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 27,
+              "sign": "+",
+              "text": "    cursor = page.nextCursor;",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 28,
+              "sign": "+",
+              "text": "  } while (cursor !== undefined);",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 29,
+              "sign": "+",
+              "text": "",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 30,
+              "sign": "+",
+              "text": "  return { practices, size: practices.length };",
+              "decision": "d2"
+            },
+            {
+              "old": null,
+              "new": 31,
+              "sign": "+",
+              "text": "};",
+              "decision": "d2"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "packages/practice-cohort/src/guards.ts",
+      "bucket": "explained",
+      "byDecisions": [
+        "d1"
+      ],
+      "hunks": [
+        {
+          "header": "@@ -0,0 +1,24 @@",
+          "lines": [
+            {
+              "old": null,
+              "new": 1,
+              "sign": "+",
+              "text": "import type { Practice } from \"@attribution-service/data\";",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 2,
+              "sign": "+",
+              "text": "import { SkipReason } from \"./skip-reason\";",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 3,
+              "sign": "+",
+              "text": "import type { GuardDecision, PracticeWithGuardFields } from \"./types\";",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 4,
+              "sign": "+",
+              "text": "",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 5,
+              "sign": "+",
+              "text": "export const hasPracticeContactEmail = (practice: Practice): boolean => {",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 6,
+              "sign": "+",
+              "text": "  return practice.practiceEmail != null && practice.practiceEmail.trim().length > 0;",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 7,
+              "sign": "+",
+              "text": "};",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 8,
+              "sign": "+",
+              "text": "",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 9,
+              "sign": "+",
+              "text": "// Local stub until NEV-1412 lands the real predicate; consumed via import so",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 10,
+              "sign": "+",
+              "text": "// the drop-in swap is a one-line change.",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 11,
+              "sign": "+",
+              "text": "// TODO(NEV-1412): replace with imported predicate from opt-out module.",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 12,
+              "sign": "+",
+              "text": "export const isPracticeOptedOut = (practice: Practice): boolean => {",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 13,
+              "sign": "+",
+              "text": "  return (practice as PracticeWithGuardFields).optedOut === true;",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 14,
+              "sign": "+",
+              "text": "};",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 15,
+              "sign": "+",
+              "text": "",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 16,
+              "sign": "+",
+              "text": "export const evaluateGuards = (practice: Practice): GuardDecision => {",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 17,
+              "sign": "+",
+              "text": "  if (isPracticeOptedOut(practice)) {",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 18,
+              "sign": "+",
+              "text": "    return { decision: \"SKIP\", reason: SkipReason.OPTED_OUT };",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 19,
+              "sign": "+",
+              "text": "  }",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 20,
+              "sign": "+",
+              "text": "  if (!hasPracticeContactEmail(practice)) {",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 21,
+              "sign": "+",
+              "text": "    return { decision: \"SKIP\", reason: SkipReason.NO_PRACTICE_CONTACT_EMAIL };",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 22,
+              "sign": "+",
+              "text": "  }",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 23,
+              "sign": "+",
+              "text": "  return { decision: \"PROCEED\" };",
+              "decision": "d1"
+            },
+            {
+              "old": null,
+              "new": 24,
+              "sign": "+",
+              "text": "};",
+              "decision": "d1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "packages/practice-cohort/src/index.ts",
+      "bucket": null,
+      "byDecisions": [],
+      "hunks": [
+        {
+          "header": "@@ -0,0 +1,4 @@",
+          "lines": [
+            {
+              "old": null,
+              "new": 1,
+              "sign": "+",
+              "text": "export * from \"./cohort\";",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 2,
+              "sign": "+",
+              "text": "export * from \"./guards\";",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 3,
+              "sign": "+",
+              "text": "export * from \"./skip-reason\";",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 4,
+              "sign": "+",
+              "text": "export * from \"./types\";",
+              "decision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "packages/practice-cohort/src/types.ts",
+      "bucket": null,
+      "byDecisions": [],
+      "hunks": [
+        {
+          "header": "@@ -0,0 +1,27 @@",
+          "lines": [
+            {
+              "old": null,
+              "new": 1,
+              "sign": "+",
+              "text": "import type { Practice } from \"@attribution-service/data\";",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 2,
+              "sign": "+",
+              "text": "import type { SkipReason } from \"./skip-reason\";",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 3,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 4,
+              "sign": "+",
+              "text": "export type PracticeWithGuardFields = Practice & {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 5,
+              "sign": "+",
+              "text": "  optedOut?: boolean;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 6,
+              "sign": "+",
+              "text": "};",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 7,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 8,
+              "sign": "+",
+              "text": "export type GuardDecision =",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 9,
+              "sign": "+",
+              "text": "  | { decision: \"PROCEED\" }",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 10,
+              "sign": "+",
+              "text": "  | {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 11,
+              "sign": "+",
+              "text": "      decision: \"SKIP\";",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 12,
+              "sign": "+",
+              "text": "      reason: typeof SkipReason.OPTED_OUT | typeof SkipReason.NO_PRACTICE_CONTACT_EMAIL;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 13,
+              "sign": "+",
+              "text": "    };",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 14,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 15,
+              "sign": "+",
+              "text": "export interface ResolveCohortOptions {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 16,
+              "sign": "+",
+              "text": "  pageSize?: number;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 17,
+              "sign": "+",
+              "text": "  /**",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 18,
+              "sign": "+",
+              "text": "   * Invoked once per fetched page. The batch uses it to emit its page counter;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 19,
+              "sign": "+",
+              "text": "   * the preview omits it so a read-only preview moves no batch metric.",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 20,
+              "sign": "+",
+              "text": "   */",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 21,
+              "sign": "+",
+              "text": "  onPageFetched?: () => void;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 22,
+              "sign": "+",
+              "text": "}",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 23,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 24,
+              "sign": "+",
+              "text": "export interface Cohort {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 25,
+              "sign": "+",
+              "text": "  practices: Practice[];",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 26,
+              "sign": "+",
+              "text": "  size: number;",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 27,
+              "sign": "+",
+              "text": "}",
+              "decision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "packages/practice-cohort/tsconfig.json",
+      "bucket": null,
+      "byDecisions": [],
+      "hunks": [
+        {
+          "header": "@@ -0,0 +1,14 @@",
+          "lines": [
+            {
+              "old": null,
+              "new": 1,
+              "sign": "+",
+              "text": "{",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 2,
+              "sign": "+",
+              "text": "  \"extends\": \"../../tsconfig.json\",",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 3,
+              "sign": "+",
+              "text": "  \"compilerOptions\": {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 4,
+              "sign": "+",
+              "text": "    \"outDir\": \"./dist\",",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 5,
+              "sign": "+",
+              "text": "    \"rootDir\": \"./src\"",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 6,
+              "sign": "+",
+              "text": "  },",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 7,
+              "sign": "+",
+              "text": "  \"include\": [\"src/**/*\"],",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 8,
+              "sign": "+",
+              "text": "  \"exclude\": [\"node_modules\", \"dist\", \"**/*.test.ts\", \"**/__tests__/**\"],",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 9,
+              "sign": "+",
+              "text": "  \"references\": [",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 10,
+              "sign": "+",
+              "text": "    {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 11,
+              "sign": "+",
+              "text": "      \"path\": \"../data\"",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 12,
+              "sign": "+",
+              "text": "    }",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 13,
+              "sign": "+",
+              "text": "  ]",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 14,
+              "sign": "+",
+              "text": "}",
+              "decision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "packages/practice-cohort/vitest.config.ts",
+      "bucket": null,
+      "byDecisions": [],
+      "hunks": [
+        {
+          "header": "@@ -0,0 +1,19 @@",
+          "lines": [
+            {
+              "old": null,
+              "new": 1,
+              "sign": "+",
+              "text": "import { defineProject, mergeConfig } from \"vitest/config\";",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 2,
+              "sign": "+",
+              "text": "import { commonConfig } from \"../../vitest.config\";",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 3,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 4,
+              "sign": "+",
+              "text": "export default mergeConfig(",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 5,
+              "sign": "+",
+              "text": "  commonConfig,",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 6,
+              "sign": "+",
+              "text": "  defineProject({",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 7,
+              "sign": "+",
+              "text": "    test: {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 8,
+              "sign": "+",
+              "text": "      name: \"practice-cohort\",",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 9,
+              "sign": "+",
+              "text": "      coverage: {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 10,
+              "sign": "+",
+              "text": "        thresholds: {",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 11,
+              "sign": "+",
+              "text": "          lines: 90,",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 12,
+              "sign": "+",
+              "text": "          functions: 90,",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 13,
+              "sign": "+",
+              "text": "          branches: 85,",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 14,
+              "sign": "+",
+              "text": "          statements: 90,",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 15,
+              "sign": "+",
+              "text": "        },",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 16,
+              "sign": "+",
+              "text": "      },",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 17,
+              "sign": "+",
+              "text": "    },",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 18,
+              "sign": "+",
+              "text": "  }),",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 19,
+              "sign": "+",
+              "text": ");",
+              "decision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "packages/practice-cohort/vitest.env.ts",
+      "bucket": null,
+      "byDecisions": [],
+      "hunks": [
+        {
+          "header": "@@ -0,0 +1,9 @@",
+          "lines": [
+            {
+              "old": null,
+              "new": 1,
+              "sign": "+",
+              "text": "process.env.NODE_ENV = \"test\";",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 2,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 3,
+              "sign": "+",
+              "text": "process.env.TABLE_NAME = \"attribution-service\";",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 4,
+              "sign": "+",
+              "text": "process.env.DDB_ENDPOINT = \"http://localhost:4568\";",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 5,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 6,
+              "sign": "+",
+              "text": "// AWS credentials (fake values for LocalStack - it doesn't validate them)",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 7,
+              "sign": "+",
+              "text": "process.env.AWS_ACCESS_KEY_ID = \"test\";",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 8,
+              "sign": "+",
+              "text": "process.env.AWS_SECRET_ACCESS_KEY = \"test\";",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 9,
+              "sign": "+",
+              "text": "process.env.AWS_REGION = \"us-west-2\";",
+              "decision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "pnpm-lock.yaml",
+      "bucket": null,
+      "byDecisions": [],
+      "hunks": [
+        {
+          "header": "@@ -166,6 +166,9 @@",
+          "lines": [
+            {
+              "old": 166,
+              "new": 166,
+              "sign": " ",
+              "text": "      '@attribution-service/pdf-renderer':",
+              "decision": null
+            },
+            {
+              "old": 167,
+              "new": 167,
+              "sign": " ",
+              "text": "        specifier: workspace:*",
+              "decision": null
+            },
+            {
+              "old": 168,
+              "new": 168,
+              "sign": " ",
+              "text": "        version: link:../../../packages/pdf-renderer",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 169,
+              "sign": "+",
+              "text": "      '@attribution-service/practice-cohort':",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 170,
+              "sign": "+",
+              "text": "        specifier: workspace:*",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 171,
+              "sign": "+",
+              "text": "        version: link:../../../packages/practice-cohort",
+              "decision": null
+            },
+            {
+              "old": 169,
+              "new": 172,
+              "sign": " ",
+              "text": "      '@attribution-service/reporting':",
+              "decision": null
+            },
+            {
+              "old": 170,
+              "new": 173,
+              "sign": " ",
+              "text": "        specifier: workspace:*",
+              "decision": null
+            },
+            {
+              "old": 171,
+              "new": 174,
+              "sign": " ",
+              "text": "        version: link:../../../packages/reporting",
+              "decision": null
+            }
+          ]
+        },
+        {
+          "header": "@@ -342,6 +345,22 @@",
+          "lines": [
+            {
+              "old": 342,
+              "new": 345,
+              "sign": " ",
+              "text": "        specifier: ^4.4.3",
+              "decision": null
+            },
+            {
+              "old": 343,
+              "new": 346,
+              "sign": " ",
+              "text": "        version: 4.4.3",
+              "decision": null
+            },
+            {
+              "old": 344,
+              "new": 347,
+              "sign": " ",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 348,
+              "sign": "+",
+              "text": "  packages/practice-cohort:",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 349,
+              "sign": "+",
+              "text": "    dependencies:",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 350,
+              "sign": "+",
+              "text": "      '@attribution-service/data':",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 351,
+              "sign": "+",
+              "text": "        specifier: workspace:^",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 352,
+              "sign": "+",
+              "text": "        version: link:../data",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 353,
+              "sign": "+",
+              "text": "    devDependencies:",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 354,
+              "sign": "+",
+              "text": "      '@aws-sdk/client-dynamodb':",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 355,
+              "sign": "+",
+              "text": "        specifier: ^3.1096.0",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 356,
+              "sign": "+",
+              "text": "        version: 3.1112.0",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 357,
+              "sign": "+",
+              "text": "      vitest:",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 358,
+              "sign": "+",
+              "text": "        specifier: ^4.1.2",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 359,
+              "sign": "+",
+              "text": "        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(@vitest/ui@4.1.10)(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.2)(tsx@4.23.12)(yaml@2.9.0))",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 360,
+              "sign": "+",
+              "text": "      zod:",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 361,
+              "sign": "+",
+              "text": "        specifier: ^4.4.3",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 362,
+              "sign": "+",
+              "text": "        version: 4.4.3",
+              "decision": null
+            },
+            {
+              "old": null,
+              "new": 363,
+              "sign": "+",
+              "text": "",
+              "decision": null
+            },
+            {
+              "old": 345,
+              "new": 364,
+              "sign": " ",
+              "text": "  packages/prospect-service-client:",
+              "decision": null
+            },
+            {
+              "old": 346,
+              "new": 365,
+              "sign": " ",
+              "text": "    dependencies:",
+              "decision": null
+            },
+            {
+              "old": 347,
+              "new": 366,
+              "sign": " ",
+              "text": "      '@pathccm/prospect-service-client-sdk':",
+              "decision": null
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
