@@ -1,11 +1,22 @@
 {
   "name": "proof",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "Generates a self-contained HTML walkthrough of a pull request.",
   "bin": {
-    "proof": "./proof.sh"
+    "proof": "./proof.sh",
+    "proof-render": "./generate.js",
+    "proof-retrofit": "./retrofit.sh"
   },
+  "files": [
+    "generate.js",
+    "validate.js",
+    "proof.sh",
+    "retrofit.sh",
+    "generator/",
+    "schemas/",
+    "docs/generation-prompt.md"
+  ],
   "scripts": {
     "proof": "./proof.sh",
     "ingest": "node generator/ingest-diff.js",
