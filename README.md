@@ -11,32 +11,29 @@ quality, or suggest improvements.
 ## The idea
 
 A diff is **linear** — file after file. A change is **causal** — "added X because Y, which
-forced Z." The diff shows the *outcome* of every judgment call and preserves none of the
-reasoning; the reviewer reconstructs it in their head, every PR, every time. Two things they
-actually need go missing on merge:
+forced Z." The diff shows the outcome of every judgment call but keeps none of the reasoning,
+so the reviewer reconstructs it by hand on every PR. Two things they need are lost at merge:
 
-- **Reasoning during development** — "used a separate type instead of widening the union,
-  because widening breaks narrowing." The judgment calls, including the *deviations*: planned
+- **Reasoning** — why each judgment call went the way it did, including *deviations*: planned
   X, hit Y, switched to Z.
-- **Behaviour** — what the code does at runtime. You approve behaviour, not structure.
+- **Behaviour** — what the code does at runtime. Reviewers approve behaviour, not structure.
 
-A walkthrough is **one spine**: the author's decisions, ordered the way they'd explain them to
-a colleague — framing first, mechanisms next, edge/error posture last. Each decision carries
-what was **chosen**, what was **rejected**, and **why it matters**. Deliberate *non-changes*
-count, and are often the most valuable thing surfaced, because a diff can't show them. See
+A walkthrough is a single **spine**: the author's decisions in the order they'd explain them —
+framing, then mechanisms, then edge and error handling. Each decision records what was
+**chosen**, what was **rejected**, and **why it matters**. Deliberate *non-changes* count too,
+and are often the most valuable thing surfaced, since a diff can't show them. See
 [`docs/design.md`](docs/design.md) for the full model.
 
-Every claim carries its provenance: *who is making it* and *how strongly it's backed*. proof
-derives that tier mechanically from the evidence rather than letting a source assert it, so a
-claim never reads stronger than what backs it. This is what separates the three build paths
-below — they differ in the evidence they have, and therefore in how strong a claim they can
-make.
+Every claim carries its provenance — who makes it and how strongly it's backed. proof derives
+that tier mechanically from the evidence instead of letting a source assert it, so no claim
+reads stronger than its backing. This distinguishes the three build paths below: they differ
+in the evidence available, and therefore in the strongest claim they can make.
 
 ## Three ways to build a walkthrough — strongest evidence first
 
-The same renderer, validator, and page come out of all three. They differ only in **where the
+All three share the same renderer, validator, and output page. They differ only in **where the
 decisions come from**, and therefore in the strongest tier they can reach. The provenance
-ladder (weakest → strongest) is:
+ladder, weakest → strongest:
 
 ```
 reconstructed  <  first-hand ≈ through-review  <  machine-verified  <  author-confirmed  <  author-verified
@@ -51,54 +48,54 @@ reconstructed  <  first-hand ≈ through-review  <  machine-verified  <  author-
 ### 1. Live capture
 
 The only path that reaches `first-hand` and the verified tiers, and the only one that captures
-deviation reasoning — "planned X, hit Y, switched to Z", which no finished PR records anywhere
+deviation reasoning — "planned X, hit Y, switched to Z" — which no finished PR records anywhere
 a later reconstruction could recover. An agent logs each decision as it works.
 
-Driven from inside Claude Code by the **`/proof:decision-log`** skill, which writes an
-append-only decision ledger (`proof.ledger/v1`, one file per PR at
-`.proof/ledgers/<ticket>.ledger.jsonl`) as the work happens:
+The **`/proof:decision-log`** skill drives it from inside Claude Code, writing an append-only
+decision ledger (`proof.ledger/v1`, one file per PR at `.proof/ledgers/<ticket>.ledger.jsonl`)
+as the work happens:
 
-- **opt in** → `start` on the branch you intend to document. This creates the ledger, which is
-  what arms the hooks below — capture is inert until you do (a first `propose` also creates it)
-- **plan** → `propose` each decision you intend
-- **execute** → `realize` / `revise` / `reject` each one as you implement (a `revise` with its
-  reason is the deviation a diff can't show)
-- **review** → `verify` the lenses that passed, `revise`/`reject` what the review changed
-- **close** when done
+- **opt in** — `start` on the branch you intend to document. This creates the ledger, which
+  arms the hooks below; capture is inert until then (a first `propose` also creates it).
+- **plan** — `propose` each decision you intend.
+- **execute** — `realize` / `revise` / `reject` each one as you implement. A `revise` with its
+  reason is the deviation a diff can't show.
+- **review** — `verify` the lenses that passed; `revise` / `reject` what the review changed.
+- **close** when done.
 
-Three Claude Code **hooks** (registered via [`hooks/hooks.json`](hooks/hooks.json)) turn the
-discipline from "remember to log" into something structural once you've opted in. All three are
-scoped to the feature branch and stay inert on a trunk branch (`main`/`master`/`develop`) or a
-detached HEAD, **and** on any feature branch whose ledger doesn't exist yet — so a branch you
-never `start` gets no `.proof/` and no capture, and enabling the plugin globally is safe:
+Three Claude Code **hooks** (registered via [`hooks/hooks.json`](hooks/hooks.json)) make the
+discipline structural rather than remembered. All three are scoped to the feature branch and
+stay inert on a trunk branch (`main` / `master` / `develop`), a detached HEAD, and any feature
+branch whose ledger doesn't exist yet — so a branch you never `start` gets no `.proof/` and no
+capture, and enabling the plugin globally is safe:
 
-- `observe-edit` (`PostToolUse` on `Edit`/`Write`) records which lines changed at which commit,
-  so anchors are exact and the liveness claim is checkable — not self-reported. It fires only
-  after the branch has opted in; edits before `start` (or the first `propose`) are not captured.
+- `observe-edit` (`PostToolUse` on `Edit` / `Write`) records which lines changed at which
+  commit, so anchors are exact and the liveness claim is checkable rather than self-reported.
+  It fires only after the branch has opted in; edits before `start` are not captured.
 - `record-approval` (`PostToolUse` on `ExitPlanMode`) records a human plan approval, which the
   ledger later pairs to a `confirm`.
 - `reconcile-stop` (`Stop`) blocks the turn from ending while any proposed decision has no
   terminal event — you can't finish with decisions unaccounted for.
 
 Everything a session writes is scoped under the branch's ticket: the ledger at
-`.proof/ledgers/<ticket>.ledger.jsonl` (committed with the PR) and the gitignored scratch state
+`.proof/ledgers/<ticket>.ledger.jsonl` (committed with the PR), and gitignored scratch state
 (observations, human attestations, sticky phase, the stop-gate counter) at
 `.proof/scratch/<ticket>/` (`generator/scope.js`). Add `.proof/scratch/` to the target repo's
 `.gitignore`; commit `.proof/ledgers/`.
 
 `first-hand` requires evidence that an event was written at decision-time, not `by: agent`
 alone: the observation hook's `observedAt` must match the commit the event was written at. A
-repo with no hooks produces no such evidence, so its events fall back to `reconstructed` — the
-same tier a retrofit gets. See [`skills/decision-log/SKILL.md`](skills/decision-log/SKILL.md) and
-[`docs/ledger-schema.md`](docs/ledger-schema.md).
+repo with no hooks produces no such evidence, so its events fall back to `reconstructed`, the
+same tier a retrofit gets. See [`skills/decision-log/SKILL.md`](skills/decision-log/SKILL.md)
+and [`docs/ledger-schema.md`](docs/ledger-schema.md).
 
 ### 2. Retrofit — from a finished PR
 
 Reconstruct the ledger **backwards** from a completed PR's leftover artifacts — the PR body,
 commits, and any local review plan — instead of emitting it forward. Every event is written
-`by: retrofit`, which caps at `through-review`; it can't reach `first-hand` or a verified tier,
-because a reconstruction has no decision-time evidence. Use it to turn already-finished tickets
-into walkthroughs without changing how any agent behaves. Its ceiling is the reasoning that was
+`by: retrofit`, which caps at `through-review`: a reconstruction has no decision-time evidence,
+so it can't reach `first-hand` or a verified tier. Use it to turn already-finished tickets into
+walkthroughs without changing how any agent behaves. Its ceiling is the reasoning that was
 never written down — the gap live capture exists to close.
 
 ```sh
@@ -116,7 +113,7 @@ See [`docs/retrofit-ledger.md`](docs/retrofit-ledger.md) for the ceiling and a w
 
 No ledger and no artifacts, just a diff: `proof.sh` has a model read the change cold and draft
 the decisions. This is the weakest source — output is `reconstructed` and should be treated as
-a draft until a human corrects it — but it needs nothing but the PR.
+a draft until a human corrects it — but it needs nothing beyond the PR.
 
 ```sh
 proof <pr-number> [--repo owner/name] [--out ./proof-out]   # ./proof-out/ by default
@@ -156,13 +153,13 @@ This puts three commands on your `PATH`:
 Commands resolve their own install location, so vendored EJS, templates, and schemas travel
 with them — no `npm install`, no `PROOF_HOME`. `proof` and `proof-retrofit` default their
 output to `./proof-out/` in the repo you invoke them from (override with `--out`), matching
-where the `/proof:*` skills write. `proof-render` is the exception: give it an explicit
-`out.html` or it writes next to the input JSON.
+where the `/proof:*` skills write. `proof-render` is the exception: pass an explicit `out.html`
+or it writes next to the input JSON.
 
 ### Install the plugin (for the `/proof:*` skills)
 
-Live capture and retrofit run from inside Claude Code. The whole checkout **is** the plugin —
-scripts and hooks travel with it:
+Live capture and retrofit run from inside Claude Code. The checkout **is** the plugin — scripts
+and hooks travel with it:
 
 ```sh
 /plugin marketplace add /path/to/proof     # inside Claude Code
@@ -180,7 +177,7 @@ three live-capture hooks.
 The page has three tabs, all **derived from the same decision spine** — behaviour and diff are
 evidence a decision owns, never authored separately, so they cannot desync from the spine. It
 opens on **Diff** when the PR has one, so the reviewer's first screen is the real diff rather
-than proof's narration of it; it falls back to **Behaviour** when there are runtime scenarios
+than proof's narration of it, and falls back to **Behaviour** when there are runtime scenarios
 but no diff, then **Decisions**.
 
 - **Diff** — the real unified diff, each line tinted by its coverage bucket. Explained lines
@@ -203,7 +200,7 @@ but no diff, then **Decisions**.
 - when a coverage map is present, every non-context file lands in exactly one bucket
   (explained, mechanical, tests, or unexplained) and diff attribution agrees with the spine
 
-With `--inputs <file>`, author quotes are checked **verbatim** (case/whitespace-insensitive)
+With `--inputs <file>`, author quotes are checked **verbatim** (case- and whitespace-insensitive)
 against the PR title, body, and commit messages — a quote that doesn't appear in the inputs is
 an error, not a missing field. `proof.sh` passes this automatically. Without it, validation
 still runs but warns that quotes were unchecked.
@@ -221,12 +218,12 @@ is the strongest signal among a decision's events:
 | `human` `verify` (grounded by attestation) | `author-verified` |
 
 `author-verified` is the tier a walkthrough should reach before it's published as trusted;
-everything below it is a draft. A `by: human` `confirm`/`verify` is rejected at write time
+everything below it is a draft. A `by: human` `confirm` / `verify` is rejected at write time
 unless a matching human **attestation** already exists — a human runs `ledger-cli.js
-human-attest` themselves, so the top of the ladder can't be reached by an agent asserting it.
+human-attest` themselves, so an agent can't reach the top of the ladder by asserting it.
 
-The intended flow is **generate → author corrects → publish**. The generator drafts; the
-author is the first verifier. An inferred decision the author confirms becomes author-stated.
+The intended flow is **generate → author corrects → publish**: the generator drafts, the author
+is the first verifier, and an inferred decision the author confirms becomes author-stated.
 
 ## CI
 
