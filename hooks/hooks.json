@@ -1,0 +1,35 @@
+{
+  "description": "proof live decision capture — observe edits, record plan approvals, and reconcile open decisions before the turn ends. All three are inert outside a git repo / a project without .proof/, so enabling the plugin globally is safe.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/observe-edit.js\""
+          }
+        ]
+      },
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/record-approval.js\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/reconcile-stop.js\""
+          }
+        ]
+      }
+    ]
+  }
+}
