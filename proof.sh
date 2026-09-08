@@ -3,8 +3,8 @@
 # proof.sh — decision-spine walkthrough pipeline.
 #
 #   proof.sh <pr-number>       one PR: gather → generate walkthrough JSON
-#                               (Claude on Bedrock) → ingest real diff →
-#                               validate → render self-contained HTML.
+#                               (bedrock or opencode, auto-detected) →
+#                               ingest real diff → validate → render HTML.
 #   proof.sh stack <manifest>  a stack of PRs: reduce each layer's ledger/spine
 #                               → ingest that layer's `gh pr diff` → enrich →
 #                               compose (proof.stack/v1) → validate → render.
@@ -13,16 +13,28 @@
 #                               pr-<n>.html (the same page a plain single-PR
 #                               run produces). No model call.
 #
-# In the single-PR path, generate is the only step that calls a model; it
-# invokes Claude on Bedrock directly (aws bedrock-runtime invoke-model), so it
-# needs only AWS credentials — OIDC in CI, the ambient profile locally. Every
-# other step, in both subcommands, is a pure node script. Pass --data to a
-# single-PR run to inject pre-generated JSON and skip the model call — used
-# for prompt-tuning and for testing the mechanical pipeline.
+# In the single-PR path, generate is the only step that calls a model. There
+# is no default backend baked in — proof.sh probes what's on PATH so the same
+# invocation works on any machine/repo regardless of which is set up, and
+# --backend forces a choice when both are present or auto-detection guesses
+# wrong:
+#   bedrock   invokes Claude on Bedrock directly via
+#             `aws bedrock-runtime invoke-model` — needs only AWS credentials
+#             (OIDC in CI, the ambient profile locally). Preferred when the
+#             `aws` CLI is on PATH.
+#   opencode  shells out to the `opencode` CLI (opencode.ai), authenticated
+#             separately (`opencode auth login`) — lets --model select any
+#             provider/model opencode is configured for. Falls back to this
+#             when `aws` isn't on PATH but `opencode` is.
+# Every other step, in both subcommands, is a pure node script. Pass --data to
+# a single-PR run to inject pre-generated JSON and skip the model call (and
+# backend detection) entirely — used for prompt-tuning and for testing the
+# mechanical pipeline.
 #
 # Usage:
-#   proof.sh <pr-number> [--repo owner/name] [--data file.json] [--model id]
-#            [--max-tokens n] [--prompt file] [--out dir] [--keep-tmp]
+#   proof.sh <pr-number> [--repo owner/name] [--data file.json]
+#            [--backend bedrock|opencode] [--model id] [--max-tokens n]
+#            [--prompt file] [--out dir] [--keep-tmp]
 #   proof.sh stack <manifest.json> [--repo owner/name] [--out dir]
 #
 # Exit codes:
@@ -176,7 +188,8 @@ fi
 # --- defaults -----------------------------------------------------------------
 REPO=""
 DATA=""
-MODEL="${ANTHROPIC_MODEL:-us.anthropic.claude-sonnet-4-6[1m]}"
+BACKEND="${PROOF_BACKEND:-}"
+MODEL="${ANTHROPIC_MODEL:-}"
 MAX_TOKENS="${PROOF_MAX_TOKENS:-16384}"
 PROMPT="$HERE/docs/generation-prompt.md"
 OUT="$HERE/prototype"
@@ -188,14 +201,16 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --repo)   REPO="$2"; shift 2 ;;
     --data)   DATA="$2"; shift 2 ;;
+    --backend) BACKEND="$2"; shift 2 ;;
     --model)  MODEL="$2"; shift 2 ;;
     --max-tokens) MAX_TOKENS="$2"; shift 2 ;;
     --prompt) PROMPT="$2"; shift 2 ;;
     --out)    OUT="$2"; shift 2 ;;
     --keep-tmp) KEEP_TMP=1; shift ;;
     -h|--help)
-      echo "usage: proof.sh <pr-number> [--repo owner/name] [--data file.json] [--model id]"
-      echo "                [--max-tokens n] [--prompt file] [--out dir] [--keep-tmp]"
+      echo "usage: proof.sh <pr-number> [--repo owner/name] [--data file.json]"
+      echo "                [--backend bedrock|opencode] [--model id] [--max-tokens n]"
+      echo "                [--prompt file] [--out dir] [--keep-tmp]"
       echo "       proof.sh stack <manifest.json> [--repo owner/name] [--out dir]"
       exit 0 ;;
     -*) echo "❌ unknown flag: $1" >&2; exit 2 ;;
@@ -208,6 +223,37 @@ if [ -z "$PR" ]; then
   echo "   usage: proof.sh <pr-number> [--repo owner/name] [--data file.json]" >&2
   echo "          proof.sh stack <manifest.json> [--repo owner/name]" >&2
   exit 2
+fi
+
+if [ -n "$BACKEND" ]; then
+  case "$BACKEND" in
+    bedrock|opencode) ;;
+    *) echo "❌ unknown --backend: $BACKEND (expected bedrock or opencode)" >&2; exit 2 ;;
+  esac
+elif [ -z "$DATA" ]; then
+  # No --backend given: auto-detect from what's on PATH rather than assuming
+  # one provider, so this works the same in any repo/machine regardless of
+  # which is set up. Bedrock first — it's what this repo's own CI already has
+  # wired up via OIDC; opencode as the no-AWS-required fallback.
+  if command -v aws >/dev/null 2>&1; then
+    BACKEND="bedrock"
+  elif command -v opencode >/dev/null 2>&1; then
+    BACKEND="opencode"
+  else
+    echo "❌ no generation backend found on PATH — install the aws CLI (Bedrock access) or the opencode CLI (opencode.ai), or pass --data to skip generation entirely." >&2
+    exit 2
+  fi
+fi
+
+# Backend-specific model default, applied only when --model / $ANTHROPIC_MODEL
+# didn't already set one — an opencode provider/model id would be meaningless
+# as a Bedrock inference profile and vice versa.
+if [ -z "$MODEL" ]; then
+  if [ "$BACKEND" = "opencode" ]; then
+    MODEL="${OPENCODE_MODEL:-}"
+  else
+    MODEL="us.anthropic.claude-sonnet-4-6[1m]"
+  fi
 fi
 
 # Resolve repo from the current checkout when not given, so the script works the
@@ -239,20 +285,27 @@ TITLE="$(jq -r '.title' "$META_JSON")"
 DIFF_LINES="$(grep -cE '^[+-]' "$DIFF_PATCH" || true)"
 echo "    head=${HEAD_SHA:0:7} base=${BASE_SHA:0:7} · ${DIFF_LINES} changed lines"
 
+# Commit messages are author-stated provenance; both the generation prompt and
+# the verbatim quote check (stage 4) mine them, so compute this once here —
+# needed in the --data bypass path too, not just the model path.
+COMMITS="$(git -C "$HERE" log "${BASE_SHA}..${HEAD_SHA}" --format='%h %s%n%b' 2>/dev/null || echo '(commit log unavailable — repo not checked out at these SHAs)')"
+
+# Inputs the validator checks author quotes against — title, body, commits.
+# Not the diff: a quote is the author's stated reasoning, never diff text.
+INPUTS_TXT="$TMP/pr-$PR.inputs.txt"
+{
+  jq -r '.title, (.body // "")' "$META_JSON"
+  echo
+  echo "$COMMITS"
+} > "$INPUTS_TXT"
+
 # --- 2. generate --------------------------------------------------------------
 if [ -n "$DATA" ]; then
   echo "· [2/5] generate — bypassed, using $DATA"
   [ -r "$DATA" ] || { echo "❌ --data file not readable: $DATA" >&2; exit 2; }
   cp "$DATA" "$DATA_JSON"
 else
-  # Bedrock takes a plain inference-profile id. The harness may hand us the
-  # model in gateway form (claude/us.anthropic.…) with a context-beta suffix
-  # (…-opus-4-8[1m]); strip both the prefix and the trailing "[...]".
-  MODEL_ID="${MODEL%%\[*}"; MODEL_ID="${MODEL_ID#claude/}"
-  echo "· [2/5] generate — bedrock ($MODEL_ID)"
-  # Commit messages are author-stated provenance; the generation prompt mines
-  # them, so inline the full body of every commit on the branch.
-  COMMITS="$(git -C "$HERE" log "${BASE_SHA}..${HEAD_SHA}" --format='%h %s%n%b' 2>/dev/null || echo '(commit log unavailable — repo not checked out at these SHAs)')"
+  echo "· [2/5] generate — $BACKEND${MODEL:+ ($MODEL)}"
 
   # Fence author-controlled text (title/body/diff) with a backtick run longer
   # than any inside it, so a crafted description can't pose as prompt structure.
@@ -281,45 +334,82 @@ else
     echo "Emit ONLY the walkthrough JSON object — no prose, no markdown fence around it."
   } > "$PROMPT_FILE"
 
-  # Call Bedrock directly rather than through `claude -p`: the CLI inherits an
-  # org's managed settings / gateway config when run inside another Claude Code
-  # session, which silently overrides CLAUDE_CODE_USE_BEDROCK. A raw InvokeModel
-  # depends only on AWS creds (OIDC in CI, the ambient profile locally).
-  #
-  BODY="$TMP/bedrock-request.json"
-  RESP="$TMP/bedrock-response.json"
-  jq -n --rawfile prompt "$PROMPT_FILE" --argjson max "$MAX_TOKENS" \
-    '{anthropic_version: "bedrock-2023-05-31", max_tokens: $max,
-      messages: [{role: "user", content: $prompt}]}' > "$BODY"
+  case "$BACKEND" in
+    bedrock)
+      # Bedrock takes a plain inference-profile id. The harness may hand us the
+      # model in gateway form (claude/us.anthropic.…) with a context-beta suffix
+      # (…-opus-4-8[1m]); strip both the prefix and the trailing "[...]".
+      MODEL_ID="${MODEL%%\[*}"; MODEL_ID="${MODEL_ID#claude/}"
 
-  # invoke-model is synchronous: the socket stays open for the whole generation,
-  # which for a large diff exceeds the AWS CLI's 60s default read timeout. Disable
-  # the CLI's own timeout and let the outer `timeout` wrapper bound the call.
-  timeout -k 30s 600s \
-    aws bedrock-runtime invoke-model \
-      --region "${AWS_REGION:-us-west-2}" \
-      --cli-read-timeout 0 --cli-connect-timeout 15 \
-      --model-id "$MODEL_ID" \
-      --body "fileb://$BODY" \
-      "$RESP" > "$TMP/aws-stdout.txt" 2>"$TMP/aws-stderr.txt" || true
+      # Call Bedrock directly rather than through `claude -p`: the CLI inherits an
+      # org's managed settings / gateway config when run inside another Claude Code
+      # session, which silently overrides CLAUDE_CODE_USE_BEDROCK. A raw InvokeModel
+      # depends only on AWS creds (OIDC in CI, the ambient profile locally).
+      BODY="$TMP/bedrock-request.json"
+      RESP="$TMP/bedrock-response.json"
+      jq -n --rawfile prompt "$PROMPT_FILE" --argjson max "$MAX_TOKENS" \
+        '{anthropic_version: "bedrock-2023-05-31", max_tokens: $max,
+          messages: [{role: "user", content: $prompt}]}' > "$BODY"
 
-  if [ ! -s "$RESP" ]; then
-    echo "❌ bedrock returned no response — likely auth, region, or model-access failure:" >&2
-    cat "$TMP/aws-stderr.txt" >&2
-    exit 3
-  fi
+      # invoke-model is synchronous: the socket stays open for the whole generation,
+      # which for a large diff exceeds the AWS CLI's 60s default read timeout. Disable
+      # the CLI's own timeout and let the outer `timeout` wrapper bound the call.
+      timeout -k 30s 600s \
+        aws bedrock-runtime invoke-model \
+          --region "${AWS_REGION:-us-west-2}" \
+          --cli-read-timeout 0 --cli-connect-timeout 15 \
+          --model-id "$MODEL_ID" \
+          --body "fileb://$BODY" \
+          "$RESP" > "$TMP/aws-stdout.txt" 2>"$TMP/aws-stderr.txt" || true
 
-  # A hard token cap truncates mid-object; the JSON parse below would fail with a
-  # misleading message, so name the real cause here.
-  if [ "$(jq -r '.stop_reason // ""' "$RESP")" = "max_tokens" ]; then
-    echo "❌ model hit max_tokens ($MAX_TOKENS) — output truncated. Raise --max-tokens." >&2
-    exit 3
-  fi
+      if [ ! -s "$RESP" ]; then
+        echo "❌ bedrock returned no response — likely auth, region, or model-access failure:" >&2
+        cat "$TMP/aws-stderr.txt" >&2
+        exit 3
+      fi
 
-  # Extract the assistant text. Strip a leading/trailing ```json fence if the
-  # model wrapped the object despite instructions.
-  jq -r '.content[0].text // ""' "$RESP" \
-    | sed '1{/^```/d;}; ${/^```$/d;}' > "$DATA_JSON" || true
+      # A hard token cap truncates mid-object; the JSON parse below would fail with a
+      # misleading message, so name the real cause here.
+      if [ "$(jq -r '.stop_reason // ""' "$RESP")" = "max_tokens" ]; then
+        echo "❌ model hit max_tokens ($MAX_TOKENS) — output truncated. Raise --max-tokens." >&2
+        exit 3
+      fi
+
+      # Extract the assistant text. Strip a leading/trailing ```json fence if the
+      # model wrapped the object despite instructions.
+      jq -r '.content[0].text // ""' "$RESP" \
+        | sed '1{/^```/d;}; ${/^```$/d;}' > "$DATA_JSON" || true
+      ;;
+
+    opencode)
+      # `opencode run` prints its (formatted) reply to stdout. Attach the
+      # prompt as a file rather than inlining it as the message argument — a
+      # full PR diff can be large enough to be an awkward shell argument, and
+      # -f is opencode's documented path for substantial content. --model is
+      # only passed when set, so an empty $MODEL falls back to whatever
+      # provider/model opencode itself is configured for.
+      RESP="$TMP/opencode-stdout.txt"
+      ERR="$TMP/opencode-stderr.txt"
+      OC_ARGS=(run)
+      [ -n "$MODEL" ] && OC_ARGS+=(-m "$MODEL")
+      # -f/--file is a greedy array flag: anything after it on the command
+      # line is swallowed as another file, not treated as the message. It
+      # must come last.
+      OC_ARGS+=("Follow the instructions in the attached file exactly and reply with only the walkthrough JSON object." -f "$PROMPT_FILE")
+
+      timeout -k 30s 600s opencode "${OC_ARGS[@]}" > "$RESP" 2>"$ERR" || true
+
+      if [ ! -s "$RESP" ]; then
+        echo "❌ opencode returned no response — likely auth or model-access failure:" >&2
+        cat "$ERR" >&2
+        exit 3
+      fi
+
+      # Strip a leading/trailing ```json fence if the model wrapped the object
+      # despite instructions.
+      sed '1{/^```/d;}; ${/^```$/d;}' "$RESP" > "$DATA_JSON"
+      ;;
+  esac
 
   if ! jq empty "$DATA_JSON" 2>/dev/null || [ ! -s "$DATA_JSON" ]; then
     echo "❌ generation did not produce valid JSON (see stderr above)." >&2
@@ -339,7 +429,7 @@ node "$HERE/generator/ingest-diff.js" "$DATA_JSON" "$DIFF_PATCH"
 
 # --- 4. validate --------------------------------------------------------------
 echo "· [4/5] validate — provenance + evidence + coverage"
-if ! node "$HERE/validate.js" "$DATA_JSON"; then
+if ! node "$HERE/validate.js" "$DATA_JSON" --inputs "$INPUTS_TXT"; then
   echo
   echo "❌ validation failed — not rendering. Fix the data/prompt and re-run." >&2
   # In CI this stdout becomes the PR comment body (see .github/workflows/proof.yml).

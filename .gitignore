@@ -4,4 +4,12 @@
 prototype/*.html
 protos/*.html
 
+# Scratch state for live decision capture (.plans/live-decision-capture.md) —
+# working files the ledger is distilled from, not the ledger itself.
+# .proof/ledgers/<ticket>.ledger.jsonl is committed; only these are not.
+.proof/human-attest.jsonl
+.proof/observations.jsonl
+.proof/state.json
+.proof/stop-gate.json
+
 .DS_Store

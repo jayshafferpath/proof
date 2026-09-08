@@ -56,7 +56,7 @@ docs (`spine-schema.md`, `ledger-schema.md`) are the annotated companions to the
 
 | Contract | Status | Doc | Produced by | Consumed by |
 |---|---|---|---|---|
-| `proof.ledger/v1` | **stable** | `ledger-schema.md` | the `/decision-log` emitter (ticket-work) | `reduce-ledger.js` |
+| `proof.ledger/v1` | **stable** | `ledger-schema.md` | `generator/decision-log.js` (the `/proof:decision-log` skill, live capture) and `generator/ledger-cli.js` (the `/proof:retrofit-ledger` skill, after the fact) | `reduce-ledger.js` |
 | `proof.spine/v1` | **stable** | `spine-schema.md` | the generation model; `--data` fixtures | `validate.js`, `ingest-diff.js`, `generate.js` |
 | `proof.spine/v2` | **draft** | `spine-schema.md` § v2 | `reduce-ledger.js` | `validate.js` (v2 ruleset), `generate.js` (Decisions tab) |
 

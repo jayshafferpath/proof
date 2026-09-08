@@ -22,39 +22,36 @@ Notably, the **dependency graph is deliberately absent**. Structure is recoverab
 or tree-sitter can rebuild "X imports Y" without an LLM. Reasoning cannot be recovered, so
 that is where the effort goes.
 
-## Two tracks, one at a time
+## One spine: decisions
 
-The reviewer toggles between two peer views. They are not nested — each owns the full canvas
-when active.
+The walkthrough is **one spine**, not two peer tracks. The spine is the author's judgment
+calls, ordered the way the author would explain them to a colleague: framing and scoping
+first, mechanisms next, error and edge posture last. Each decision carries what was
+**chosen**, what was **rejected**, and **why it matters** — the consequence that makes it the
+right call. Deliberate *non-changes* count as decisions and are often the most valuable thing
+surfaced, because a diff cannot show them.
 
-### Behaviour track (the default entry)
+Behaviour and diff are not a second, co-equal track — they are **evidence a decision owns**,
+never authored separately, so they cannot desync from the spine or duplicate its content.
+That evidence renders as three views over the same data, each a different entry point:
 
-PR-scoped: only the paths this change affects. Landing on behaviour means the reviewer's
-first screen is something *checkable against code*, not a claim they must trust.
+- **Diff** — the real unified diff, every line tinted by the coverage bucket it falls in.
+  Lookup order: *what → why* — a changed line links to the decision behind it.
+- **Behaviour** — the runtime scenarios a decision's evidence proves, classified `CHANGED`
+  (behaved one way before, another now — where risk lives), `NEW` (a path that did not exist
+  before), or `UNCHANGED` (touched code, same behaviour — the regression story). `CHANGED`
+  scenarios render **before/after side by side** with an explicit **divergence marker** naming
+  the line where the two paths split; for a bugfix, that marker is the fix. A deliberate
+  non-change has no after-behaviour to link to — it renders on the `before` path only, because
+  that is the only place the code ran. Honest, and caught by validation rather than papered
+  over.
+- **Decisions** — reading order: *why → what*, the author's judgment calls in explaining
+  order, each with its chosen/rejected/why and the evidence it owns inline.
 
-Each path is classified:
-
-| Class | Meaning |
-|---|---|
-| `CHANGED` | Behaved one way before, another now. Where risk lives. |
-| `NEW` | A path that did not exist before. |
-| `UNCHANGED` | Touched code, same behaviour. The regression story. |
-
-`CHANGED` paths render as **before/after side by side** with an explicit **divergence
-marker** naming the hop where the two paths split. For a bugfix, that marker is the fix.
-
-Paths are shown as an accordion — with 3–6 paths typical for a single PR, a master/detail
-split buys nothing, and a single column lets the reviewer see the whole shape of the change
-at once.
-
-### Decision track
-
-The author's judgment calls, in the order they would explain them: framing and scoping
-first, mechanisms next, error and edge posture last.
-
-Each decision carries what was **chosen**, what was **rejected**, and **why it matters** —
-the consequence that makes it the right call. Deliberate *non-changes* count as decisions
-and are often the most valuable thing surfaced, because a diff cannot show them.
+The reviewer's first screen is whichever of these the PR actually has evidence for: the real
+diff when one exists, the behaviour matrix when there are runtime scenarios but no diff, and
+the decision list otherwise — never a claim to be trusted before the reviewer can check it
+against code.
 
 ## Provenance is the load-bearing rule
 
@@ -83,25 +80,6 @@ A faithful execution trace already shows how control flows, anchored to real lin
 no separate call-graph build — the structural axis comes free from the behaviour axis. This
 was the expensive piece in early designs and it turned out to be unnecessary.
 
-## Crossover is the connective tissue
-
-With one track visible at a time, the *transition* is the most important interaction — the
-only place the two tracks touch.
-
-- Behaviour hops carry a `why?` link instead of inline rationale, so the tracks never
-  duplicate content.
-- Crossing over **carries context**: it lands on the specific decision or hop, not the top of
-  the other track.
-- It **leaves a breadcrumb back**, so crossing over is not a commitment.
-- When the mapping fans out one-to-many, it offers a choice rather than silently picking.
-
-A hop with reasoning shows a small accent dot, so the reviewer can see *where* the decisions
-are without reading a label on every step.
-
-One consequence worth noting: **deliberate non-changes have no after-behaviour to link to.**
-"Left the exhaustive switch alone" links only to the *before* path, because that is the only
-place the switch ran. Honest, and caught by validation rather than papered over.
-
 ## The author is the first verifier
 
 The intended flow is generate → **author corrects** → publish. The author is in the loop
@@ -112,8 +90,12 @@ than a long PR description.
 
 ## Settled vs. open
 
-**Settled:** two tracks, one at a time; behaviour-first; PR-scoped; decisions with rejected
-alternatives; the provenance split; trace-as-code-path; author verifies before publishing.
+**Settled:** one decision spine, not two peer tracks; diff-first landing, falling back to
+behaviour then decisions; PR-scoped; decisions with rejected alternatives; the provenance
+split; trace-as-code-path; behaviour and diff derived from decisions, never authored
+separately; author verifies before publishing; generation backend is pluggable and
+auto-detected from what's on PATH (`aws` → bedrock, else `opencode`; override with
+`--backend`, see `proof.sh`) rather than hardcoded to one provider.
 
 **Open:**
 
@@ -130,3 +112,12 @@ alternatives; the provenance split; trace-as-code-path; author verifies before p
   cannot tell "safe" from "unexamined."
 - **Audience split.** One artifact serves engineers and non-engineers. Progressive
   disclosure is the likely answer, but it is unproven.
+
+## History
+
+The first design (Aug 2026) had two peer tracks — Behaviour and Decisions — joined by a
+crossover interaction (a `why?` link, breadcrumb-back navigation, fan-out choice). It was
+superseded by the single decision spine described above once the two tracks proved to
+duplicate content rather than stay orthogonal: see `.plans/merge-tracks.md` (the case against
+two tracks) and `.plans/decision-spine.md` (the spine that replaced them). The Diff tab is
+the spine's inverse index, added afterward: see `.plans/diff-tab.md`.

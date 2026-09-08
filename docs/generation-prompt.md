@@ -1,7 +1,6 @@
 # Generation prompt
 
-Turns a pull request into the decision-spine walkthrough data consumed by
-`prototype/index.html`.
+Turns a pull request into the decision-spine walkthrough data consumed by `generate.js`.
 
 You are explaining a change so a reviewer can **approve** it. You do not review the code,
 find defects, or judge quality. You reconstruct the thing the diff throws away: the
@@ -223,9 +222,10 @@ decisions that actually anchor the file, each file sits in exactly one bucket, a
 
 ## The diff view (tool-derived — do not author)
 
-The rendered walkthrough has two tabs: **Decisions** (the spine, above) and **Diff** (the
-real unified diff, every changed line tinted by coverage bucket, explained lines clicking
-through to the decision behind them). You do **not** write the diff — it is computed by
+The rendered walkthrough has three tabs (Diff, Behaviour, Decisions — see `docs/design.md`);
+this section covers **Diff** (the real unified diff, every changed line tinted by coverage
+bucket, explained lines clicking through to the decision behind them). You do **not** write
+the diff — it is computed by
 `node generator/ingest-diff.js <data.json> <raw.diff>`, which parses the actual `git diff`
 and attributes each line to a decision by matching the line number against that decision's
 evidence hunk ranges. Because it is derived from the spine + coverage, it cannot desync:

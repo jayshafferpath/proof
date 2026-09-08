@@ -74,9 +74,14 @@ node "${CLAUDE_PLUGIN_ROOT}/generator/ledger-cli.js" append \
 Rules:
 - **`by` is always `retrofit`.** Never `agent`/`human` — those are for live capture and would
   falsely claim a stronger tier.
-- **Anchors are coarse.** `file` + `role` (`anchor` unless it's a real before/after story). Add
-  `lines` only when the artifact cites an exact line (e.g. a review finding `foo.ts:344`); use
-  `"~"` otherwise. Set `context: true` for out-of-diff or deliberate-non-change anchors.
+- **Anchors are line-pinned.** For every anchor, read the PR diff (`gh pr diff <n>`) and set
+  `lines` to the range in the **new** file (the `+++` side) of the hunk that realizes this
+  decision, e.g. `"276-281"`. Set `hl` to the 1-6 lines inside that range that matter most.
+  Use `"~"` **only** when the decision is a pure scoping call with no code, and say so in
+  `why`. A `context: true` anchor (out-of-diff code) may keep `"~"`. `role` is `anchor` unless
+  it's a real before/after story. Also attach `tests`: `[{ "file": "...", "name": "<test
+  name>" }]` on the `realize` event for every test file the diff adds or changes that
+  exercises the decision.
 - **`realize` may establish a new decision** — give it an explicit `id` (`d1`, `d2`, … — the CLI
   does *not* auto-mint ids for `realize`/`revise`, only for `propose`/`reject`) and a `title`.
   `verify` must reference an already-emitted decision `id`. Attach a `verify` to the decision
@@ -98,4 +103,6 @@ against `proof.spine/v2`, and writes `proof-out/pr-<n>.html`.
 
 Report the rendered path and a one-line summary: N decisions / M rejects, the provenance mix
 (all `reconstructed`/`through-review` for a retrofit), and the explained/unexplained file split.
-The unexplained files are the honest coverage remainder — do not hide them.
+The unexplained files are the honest coverage remainder — do not hide them. Also report how
+many anchors are line-pinned vs `~`: more than one `~` on a non-context anchor is a smell —
+go back and read the diff for the range you skipped.

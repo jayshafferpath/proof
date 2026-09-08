@@ -76,7 +76,7 @@ the later layer's own diff). That `context` anchor is exactly what
 the layers render as unrelated. Example: the endpoint PR that consumes a package
 the extraction PR created anchors the package's public files with `context: true`.
 Everything else follows `/proof:retrofit-ledger` unchanged (`by: retrofit`,
-coarse anchors, `reject` needs a reason, `verify`/`close` reference a decision).
+line-pinned anchors, `reject` needs a reason, `verify`/`close` reference a decision).
 
 ### 3. Fill the manifest
 

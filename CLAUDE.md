@@ -51,19 +51,21 @@ Three tabs, built by `generate.js`:
   that reveals the decision behind a clicked line.
 
 Behaviour and Diff are **derived** from the decisions + evidence — never authored separately,
-so they can't desync from the spine. Default tab logic lives at `generate.js:~427`: opens on
-Behaviour when scenarios exist, else Decisions. This ordering is a documented design decision
-(the first screen should be checkable against code) — changing it overrides `docs/design.md`.
+so they can't desync from the spine. Default tab logic lives at `generate.js:~785`: opens on
+Diff when the PR has one, else Behaviour when scenarios exist, else Decisions. Diff-first is a
+documented design decision (the first screen should be the real diff, not a claim to be
+trusted) — changing it overrides `docs/design.md`.
 
 ## Pipeline
 
-`proof.sh` runs gather → generate (only model step, Claude on Bedrock) → ingest → validate →
-render. Use `--data file.json` to inject pre-generated JSON and skip the model call (no
-Bedrock creds needed) — the mechanical path for tuning and testing. Individual stages:
+`proof.sh` runs gather → generate (only model step; backend auto-detected from PATH — `aws` →
+bedrock, else `opencode` — override with `--backend bedrock|opencode`) → ingest → validate →
+render. Use `--data file.json` to inject pre-generated JSON and skip the model call (and
+backend detection) entirely — the mechanical path for tuning and testing. Individual stages:
 
 ```sh
 node generator/ingest-diff.js <data.json> <raw.diff> [out.json]
-node validate.js <data.json>
+node validate.js <data.json> [--inputs <pr-title-body-commits.txt>]
 node generate.js <data.json> [out.html]
 ```
 

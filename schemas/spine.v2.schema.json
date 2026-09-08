@@ -62,7 +62,21 @@
               "seq": { "type": "integer" },
               "chose": { "type": "string" },
               "why": { "type": "string" },
-              "reason": { "type": "string" }
+              "reason": { "type": "string" },
+              "anchors": {
+                "description": "Raw ledger anchors this state cited before being superseded. Never resolved against the diff (that's what evidence.code is for) — a superseded state's line range describes an earlier commit, not the final one.",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["file", "role"],
+                  "properties": {
+                    "file": { "type": "string", "minLength": 1 },
+                    "lines": { "type": "string" },
+                    "sha": { "type": "string" },
+                    "role": { "type": "string", "enum": ["divergence", "trace", "anchor"] }
+                  }
+                }
+              }
             }
           }
         },
@@ -92,10 +106,20 @@
             "file": { "type": "string", "minLength": 1 },
             "lines": { "type": "string" },
             "context": { "type": "boolean" },
-            "hl": { "type": "array", "items": { "type": "integer" } }
+            "hl": { "type": "array", "items": { "type": "integer" } },
+            "rows": { "type": "array", "items": { "$ref": "#/$defs/row" } }
           }
         }
       }
+    },
+    "row": {
+      "type": "array",
+      "minItems": 3,
+      "items": [
+        { "type": ["string", "integer"] },
+        { "type": "string" },
+        { "type": "integer" }
+      ]
     },
     "coverage": {
       "type": "object",

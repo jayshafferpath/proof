@@ -19,7 +19,7 @@
         "title": "PR 1227",
         "summary": "Foundation ledger (decisions only; its diff is not ingested in the offline sample).",
         "capability": "Foundation",
-        "provenance": "first-hand",
+        "provenance": "reconstructed",
         "ac": [],
         "spine": {
           "contract": "proof.spine/v2",
@@ -265,7 +265,7 @@
                 "AC-2"
               ],
               "isReject": false,
-              "provenance": "first-hand",
+              "provenance": "reconstructed",
               "provenanceTrail": [
                 {
                   "seq": 13,

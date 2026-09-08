@@ -13,8 +13,9 @@ Everything is an **append-only JSONL** line — one event per line, written in `
 mutated or deleted. A *decision* is not stored: it is the reduction of the events sharing an
 `id`. Events are the source of truth; decisions are a view.
 
-Transport: `.proof/ledger.jsonl`, committed to the branch. proof excludes this file from its own
-coverage map.
+Transport: `.proof/ledgers/<ticket>.ledger.jsonl` — one file per initiative/PR
+(`generator/ledger-paths.js`), committed to that PR's branch, not one growing file shared across
+every ticket a repo ever works. proof excludes this directory from its own coverage map.
 
 **Contract header.** The stream opens with a bare header line naming the contract; event lines
 follow. A consumer negotiates the major it sees and fails closed on an unsupported one.
@@ -43,6 +44,7 @@ event   : "propose" | "confirm" | "realize" | "revise" | "reject" | "verify" | "
 | `phase` | enum | `plan` \| `execute` \| `review` \| `copilot` |
 | `by` | enum | `agent` \| `human` \| `retrofit` (reconstructed from artifacts after the fact) |
 | `commit` | string | HEAD sha when written — the anchor pin |
+| `observedAt` | string? | HEAD sha when the *work* happened, from a hook's observation — not when the event was written. See "Provenance" below. |
 | `id` | string | decision id (`d3`, `r1`). Present on every event **except `close`** |
 
 ### Content — `propose`, patched by `revise`/`reject`
@@ -126,11 +128,20 @@ A decision's effective tier is the strongest signal among its events:
 | no ledger (reconstruction path) | `reconstructed` |
 | `by: retrofit`, non-review phase | `reconstructed` |
 | `by: retrofit`, `review`/`copilot` phase | `through-review` |
-| `agent` `propose`/`realize`/`revise` | `first-hand` |
-| any `agent` event in `review`/`copilot` phase | `through-review` |
+| non-review event, `observedAt` present **and equal to** `commit` | `first-hand` |
+| non-review event, `observedAt` absent or different from `commit` | `reconstructed` |
+| any non-review-actor event in `review`/`copilot` phase | `through-review` |
 | `human` `confirm` | `author-confirmed` |
 | `agent` `verify` | `machine-verified` |
 | `human` `verify` | `author-verified` |
+
+`first-hand` is earned, not asserted: `by: "agent"` alone is not evidence that an event was
+written at decision time rather than reconstructed from memory at the end of a run. A hook
+records `observedAt` — the commit the *work* happened at — the moment an edit lands; the CLI
+stamps `commit` — the commit when the *event* was written — at append time. The two agreeing is
+what "captured live" actually means. No `observedAt` at all (today's reality, before any hook
+exists) degrades every `by: "agent"` event to `reconstructed`, the honest default until a hook
+supplies the evidence. See `.plans/live-decision-capture.md`.
 
 Strength order (weakest → strongest): `reconstructed` < `first-hand` ≈ `through-review` <
 `machine-verified` < `author-confirmed` < `author-verified`. `author-verified` is the tier a
@@ -141,6 +152,30 @@ plan, commits, the diff) *after* the work is done. It is capped at `through-revi
 **never** reach `first-hand` or a verified tier — reconstruction must not launder itself into a
 stronger claim than a live emission. Only `agent`/`human` events, written during the build
 (Tier 2/3), earn the higher tiers.
+
+### Human attestation — grounding `by: "human"`
+
+Schema alone cannot stop an agent from writing `"by": "human"` in the same call that writes a
+`confirm` or `verify` — the two fields that pay out `author-confirmed` and `author-verified`,
+the top of the ladder. `generator/ledger-cli.js` closes that gap at write time: a `by: "human"`
+`confirm` or `verify` is rejected unless a matching **attestation** — a separate record proving
+a human actually acted — already exists.
+
+```sh
+node generator/ledger-cli.js human-attest --ticket NEV-1645 --kind verify
+```
+
+A human runs this themselves, in their own turn — not the agent, and not folded into the
+`append` call it authorizes. Each attestation is consumed on its first matching use, so one
+approval cannot silently cover every `verify` that follows it. Attestations live at
+`.proof/human-attest.jsonl`, gitignored working state distilled into the committed ledger, not
+part of it. Today this is a manual step; `.plans/live-decision-capture.md` designs a hook
+(`ExitPlanMode` for plan approval) to write the same record automatically, with no change to
+this check.
+
+`by: "agent"` `verify` needs no attestation — it is real, just weaker (`machine-verified`), and
+`propose`/`realize`/`revise`/`reject` carry no privileged tier regardless of `by`, so they are
+ungated.
 
 ## Invariants (enforced by `validate.js`)
 
@@ -173,3 +208,12 @@ stronger claim than a live emission. Only `agent`/`human` events, written during
 - **v1.1** — additive: `by` gains `retrofit` (Tier-1 reconstruction actor), capped at
   `through-review` in the provenance ladder. Older readers that only branch on `agent`/`human`
   ignore it; same major.
+- **v1.2** — additive: optional `observedAt` field. `first-hand` now requires it to equal
+  `commit`; without it (or with a mismatch), a non-review event reads `reconstructed` instead of
+  the previous unconditional `first-hand` for any `by: "agent"` event. Also closes a write-time
+  gap unrelated to the schema shape: `ledger-cli.js` now rejects `by: "human"` on `confirm`/
+  `verify` without a matching attestation (`human-attest` subcommand, evidence in
+  `.proof/human-attest.jsonl`, not part of the wire contract). Older readers that ignore unknown
+  fields see every prior `by: "agent"` ledger read one tier lower than before — an honest
+  correction, not a regression, since those ledgers were never actually captured live. Same
+  major. See `.plans/live-decision-capture.md`.

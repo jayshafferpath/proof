@@ -37,13 +37,35 @@ function validateSpineV2(spine) {
   return { errs, warns, ids };
 }
 
-const file = process.argv[2];
+const rawArgs = process.argv.slice(2);
+const inputsFlagIdx = rawArgs.indexOf("--inputs");
+const inputsFile = inputsFlagIdx !== -1 ? rawArgs[inputsFlagIdx + 1] : null;
+const file = rawArgs[0];
 if (!file) {
-  console.error("usage: node validate.js <data.json>");
+  console.error("usage: node validate.js <data.json> [--inputs <file>]");
+  process.exit(2);
+}
+if (inputsFlagIdx !== -1 && !inputsFile) {
+  console.error("usage: --inputs requires a file argument");
   process.exit(2);
 }
 
 const data = JSON.parse(fs.readFileSync(file, "utf8"));
+
+// Verbatim quote check: normalize away case, whitespace runs, and markdown
+// emphasis/code-tick characters so "Behind a feature flag" in a quote matches
+// "Behind a **feature flag**" in the PR body without a false mismatch.
+function normalize(s) {
+  return String(s)
+    .toLowerCase()
+    .replace(/[`*_]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+let inputsHaystack = null;
+if (inputsFile) {
+  inputsHaystack = normalize(fs.readFileSync(inputsFile, "utf8"));
+}
 
 // Stack payloads (proof.stack/v1) wrap N proof.spine/v2 layers. Detect and
 // validate them here — each layer against the shared v2 ruleset, plus
@@ -149,6 +171,18 @@ const testFiles = new Set(((data.coverage && data.coverage.tests) || []).map((e)
 const errors = [];
 const warnings = [];
 if (contract.assumed) warnings.push(`no contract field — assuming proof.spine/v1`);
+if (!inputsHaystack) warnings.push(`quotes not checked against PR inputs (pass --inputs)`);
+
+// A quote may join two excerpts with an ellipsis ("..." or "…"); check each
+// piece verbatim rather than the whole joined string, which would never match.
+function quoteFoundVerbatim(quote) {
+  const pieces = quote
+    .split(/\.\.\.|…/)
+    .map((p) => normalize(p))
+    .filter((p) => p.length >= 12);
+  if (!pieces.length) return true;
+  return pieces.every((p) => inputsHaystack.includes(p));
+}
 
 const KINDS = ["divergence", "trace", "anchor"];
 const steps = (frag, side) => frag[side] || [];
@@ -182,6 +216,9 @@ for (const d of decisions) {
   if (d.source === "author") {
     if (!d.quote) errors.push(`${d.id}: source=author requires a quote`);
     if (!d.quoteSrc) errors.push(`${d.id}: source=author requires quoteSrc`);
+    if (d.quote && inputsHaystack && !quoteFoundVerbatim(d.quote)) {
+      errors.push(`${d.id}: quote not found verbatim in PR inputs: "${d.quote.slice(0, 60)}"`);
+    }
   } else if (d.source === "infer") {
     if (!d.inferNote) errors.push(`${d.id}: source=infer requires inferNote`);
     if (!d.inferSrc) errors.push(`${d.id}: source=infer requires inferSrc`);

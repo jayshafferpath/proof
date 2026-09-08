@@ -23,16 +23,20 @@ when a review artifact attests the event happened). A retrofit event can **never
 able to launder itself into a stronger claim than a live, first-hand emission. A retrofit ledger
 therefore announces its own trust level — it is a draft, not an attested record.
 
-**It has a hard ceiling — two things it structurally cannot recover:**
+**It has a hard ceiling — one thing it structurally cannot recover:**
 
-- **Precise evidence.** The diff does not say which hunk implements which decision, so anchors
-  stay coarse (file-level, no line pins). Attributing hunks to decisions is exactly the judgment
-  the diff discards.
 - **In-the-moment reasoning that was never written down** — the "planned X, hit Y, switched to
   Z" deviations. If no artifact recorded it, the retrofit cannot invent it. That deviation
   reasoning is the irreplaceable thing, and it survives only if captured live.
 
-Those two gaps are the entire argument for eventually tapping agents in *live*: they are what a
+Line-pinned evidence is *not* on this list. Which hunk realizes a decision comes from reading
+the diff, same as the reconstruction (model) path does — `skills/retrofit-ledger/SKILL.md`
+requires it. What retrofit cannot recover is *which* of several plausible hunks the author had
+in mind when the artifacts are silent; in that case anchor the hunk the decision's `why` text
+most directly describes, and let the provenance tier (`reconstructed`, not a verified tier)
+carry the honesty that the mapping is inferred, not attested.
+
+That one gap is the entire argument for eventually tapping agents in *live*: it is what a
 retrofit can't reach.
 
 ## Retrofit vs. live

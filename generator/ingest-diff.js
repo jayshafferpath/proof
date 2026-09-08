@@ -96,6 +96,49 @@ function attributeLine(anchors, newLineNo) {
   return null;
 }
 
+// file -> [{ new, text, sign }] — only lines with a "new" line number (context
+// and additions), the same universe attributeLine matches against.
+function buildDiffLinesByFile(parsedFiles) {
+  const byFile = new Map();
+  for (const f of parsedFiles) {
+    const lines = [];
+    for (const h of f.hunks) {
+      for (const ln of h.lines) {
+        if (ln.sign === "+" || ln.sign === " ") lines.push(ln);
+      }
+    }
+    byFile.set(f.file, lines);
+  }
+  return byFile;
+}
+
+// v2 (ledger-native) evidence carries `kind` + `code` but no `rows` — the
+// retrofit skill anchors a line range without embedding a snippet. Fill rows
+// from the diff we already parsed, the same way a v1 spine embeds them, so a
+// retrofit walkthrough shows real code instead of a bare file:line label. v1
+// data always carries its own rows and is never touched here.
+function fillV2Rows(data, diffLinesByFile) {
+  if (data.contract !== "proof.spine/v2") return;
+  for (const d of data.decisions || []) {
+    for (const frag of d.evidence || []) {
+      const c = frag.code;
+      if (!c || c.context || !c.file) continue;
+      if (Array.isArray(c.rows) && c.rows.length) continue;
+      const range = parseRange(c.lines);
+      if (!range) continue;
+      const rows = (diffLinesByFile.get(c.file) || [])
+        .filter((ln) => ln.new >= range[0] && ln.new <= range[1])
+        .sort((a, b) => a.new - b.new)
+        .map((ln) => [String(ln.new), ln.text, ln.sign === "+" ? 1 : 0]);
+      if (rows.length) {
+        c.rows = rows;
+      } else {
+        console.log(`  warn  ${d.id}: ${c.file}:${c.lines} not in diff — no code to show`);
+      }
+    }
+  }
+}
+
 function main() {
   const [dataPath, diffPath, outPath] = process.argv.slice(2);
   if (!dataPath || !diffPath) {
@@ -106,6 +149,8 @@ function main() {
   const raw = fs.readFileSync(diffPath, "utf8");
   const anchorsByFile = buildAnchors(data.decisions || []);
   const parsed = parseDiff(raw);
+
+  fillV2Rows(data, buildDiffLinesByFile(parsed));
 
   let attributed = 0;
   const diff = parsed.map((f) => {

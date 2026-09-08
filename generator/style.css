@@ -185,6 +185,7 @@ pre.code { margin: 0; font-family: var(--mono); font-size: 12.5px; line-height: 
 .di-num { font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--ink-3); text-align: right; padding-top: 1px; align-self: start; font-variant-numeric: tabular-nums; }
 .di.on .di-num { color: var(--accent); }
 .di-body { min-width: 0; display: flex; align-items: baseline; gap: 7px; }
+.di-body.v2 { flex-direction: column; align-items: flex-start; gap: 4px; }
 .di-title { font-size: 13px; font-weight: 550; line-height: 1.35; color: var(--ink-2); }
 .di:hover .di-title { color: var(--ink); }
 .di.on .di-title { color: var(--ink); font-weight: 600; }
@@ -192,6 +193,7 @@ pre.code { margin: 0; font-family: var(--mono); font-size: 12.5px; line-height: 
 .di-flag.author { width: 5px; height: 5px; border-radius: 50%; background: var(--ink-3); opacity: .5; transform: translateY(-2px); }
 .di.on .di-flag.author { background: var(--author); opacity: 1; }
 .di-flag.infer { font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--infer); background: var(--infer-soft); border: 1px dashed color-mix(in srgb, var(--infer) 45%, transparent); border-radius: 4px; padding: 1px 5px; }
+.di-flag.tier { font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--infer); background: var(--infer-soft); border: 1px dashed color-mix(in srgb, var(--infer) 45%, transparent); border-radius: 4px; padding: 1px 5px; }
 .md-cov { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 6px; }
 .md-cov .coverage { margin-top: 0; border-top: none; padding-top: 8px; }
 .md-cov .cov-row { grid-template-columns: 1fr; gap: 2px; padding: 6px 0; }
