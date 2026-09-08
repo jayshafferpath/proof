@@ -16,11 +16,12 @@ const fs = require("fs");
 const path = require("path");
 const { execFileSync } = require("child_process");
 const { check } = require("./schema-check");
+const { HEADER } = require("./ledger-paths");
+const scope = require("./scope");
 
 const LEDGER_SCHEMA = JSON.parse(
   fs.readFileSync(path.join(__dirname, "..", "schemas", "ledger.v1.schema.json"), "utf8"),
 );
-const HEADER = { contract: "proof.ledger/v1" };
 const ATTESTS = ["confirm", "verify"]; // pure attestation — must reference an existing decision
 const ESTABLISHES = ["realize", "revise"]; // may reference OR first-establish a decision (if it carries a title)
 
@@ -34,10 +35,6 @@ const ESTABLISHES = ["realize", "revise"]; // may reference OR first-establish a
 // runs `human-attest` themselves, in their own turn, before the agent's
 // `append` call — which is the whole point: the two can't be the same action.
 const NEEDS_HUMAN_ATTEST = ["confirm", "verify"];
-
-function defaultAttestPath() {
-  return path.join(process.cwd(), ".proof", "human-attest.jsonl");
-}
 
 function readAttestations(p) {
   return fs.existsSync(p)
@@ -151,7 +148,11 @@ function appendEvent(ledgerPath, ev, opts = {}) {
     if (!realized) throw new Error(`verify "${out.id}" has no prior realize/revise to verify`);
   }
   if (out.by === "human" && NEEDS_HUMAN_ATTEST.includes(out.event)) {
-    consumeHumanAttestation(opts.attestPath || defaultAttestPath(), out.ticket, out.event);
+    consumeHumanAttestation(
+      opts.attestPath || scope.attestPath(process.cwd(), out.ticket),
+      out.ticket,
+      out.event,
+    );
   }
   if (out.event === "revise" && !out.supersedes) {
     const s = lastSeqOfId(lines, out.id);
@@ -197,7 +198,7 @@ function main() {
       console.error(`--kind must be confirm, verify, or any (got "${kind}")`);
       process.exit(2);
     }
-    const attestPath = a["attest-path"] || defaultAttestPath();
+    const attestPath = a["attest-path"] || scope.attestPath(process.cwd(), a.ticket);
     recordHumanAttestation(attestPath, { ticket: a.ticket, kind, commit: a.commit || gitHead(process.cwd()) });
     console.log(`recorded: a human attests "${kind}" for ticket "${a.ticket}" (${attestPath})`);
     return;
@@ -235,5 +236,4 @@ module.exports = {
   nextId,
   recordHumanAttestation,
   consumeHumanAttestation,
-  defaultAttestPath,
 };

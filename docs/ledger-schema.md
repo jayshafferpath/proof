@@ -168,8 +168,9 @@ node generator/ledger-cli.js human-attest --ticket NEV-1645 --kind verify
 A human runs this themselves, in their own turn — not the agent, and not folded into the
 `append` call it authorizes. Each attestation is consumed on its first matching use, so one
 approval cannot silently cover every `verify` that follows it. Attestations live at
-`.proof/human-attest.jsonl`, gitignored working state distilled into the committed ledger, not
-part of it. Today this is a manual step; `.plans/live-decision-capture.md` designs a hook
+`.proof/scratch/<ticket>/human-attest.jsonl` (scoped per branch, generator/scope.js), gitignored
+working state distilled into the committed ledger, not part of it. Today the manual `human-attest`
+step still exists; `.plans/live-decision-capture.md` designs a hook
 (`ExitPlanMode` for plan approval) to write the same record automatically, with no change to
 this check.
 
@@ -213,7 +214,7 @@ ungated.
   the previous unconditional `first-hand` for any `by: "agent"` event. Also closes a write-time
   gap unrelated to the schema shape: `ledger-cli.js` now rejects `by: "human"` on `confirm`/
   `verify` without a matching attestation (`human-attest` subcommand, evidence in
-  `.proof/human-attest.jsonl`, not part of the wire contract). Older readers that ignore unknown
+  `.proof/scratch/<ticket>/human-attest.jsonl`, not part of the wire contract). Older readers that ignore unknown
   fields see every prior `by: "agent"` ledger read one tier lower than before — an honest
   correction, not a regression, since those ledgers were never actually captured live. Same
   major. See `.plans/live-decision-capture.md`.

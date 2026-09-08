@@ -17,16 +17,14 @@
  * it isn't here to select, and that absence is supposed to show up as
  * `reconstructed` downstream, not be papered over.
  *
- * File: .proof/observations.jsonl, one JSON object per line, append-only,
- * gitignored scratch state — distilled into ledger events, never itself
- * part of proof.ledger/v1.
+ * File: .proof/scratch/<ticket>/observations.jsonl (generator/scope.js), one
+ * JSON object per line, append-only, gitignored scratch state — distilled into
+ * ledger events, never itself part of proof.ledger/v1. Callers resolve the
+ * scoped path and pass it in; this module owns the log's shape, not its
+ * location.
  */
 const fs = require("fs");
 const path = require("path");
-
-function defaultObservationsPath() {
-  return path.join(process.cwd(), ".proof", "observations.jsonl");
-}
 
 function readObservations(p) {
   return fs.existsSync(p)
@@ -82,4 +80,4 @@ function enclosingSymbol(content, lineNumber) {
   return null;
 }
 
-module.exports = { defaultObservationsPath, readObservations, appendObservation, enclosingSymbol };
+module.exports = { readObservations, appendObservation, enclosingSymbol };

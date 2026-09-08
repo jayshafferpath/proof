@@ -26,11 +26,12 @@ the code, tell them how to record that themselves (below) — do not record it f
 
 ## Setup — first call on a ticket
 
-Nothing to install. The first call for a ticket must pass `--phase plan` (or whichever phase
-you're actually starting in); after that, phase and ticket are sticky in `.proof/state.json` and
-every later call reuses them until you pass a new `--phase`. The ticket is derived from the
-current git branch name if you don't pass `--ticket` (a leading `PROJECT-123` pattern, or the
-whole branch name if there isn't one).
+Nothing to install. The ticket is derived from the current git branch name (a leading
+`PROJECT-123` pattern, or the whole branch name if there isn't one) — pass `--ticket` only to
+override it deliberately. The first call for a ticket must pass `--phase plan` (or whichever phase
+you're actually starting in); after that, phase is sticky in that ticket's scratch state
+(`.proof/scratch/<ticket>/state.json`) and every later call on the branch reuses it until you
+pass a new `--phase`.
 
 ```sh
 node generator/decision-log.js propose --title "..." --chose "..." --rejected "..." --why "..." --phase plan
