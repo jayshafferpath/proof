@@ -24,17 +24,30 @@ yourself would be exactly the laundering the provenance ladder exists to prevent
 dressed up as someone else's evidence. If a human tells you they approved the plan or reviewed
 the code, tell them how to record that themselves (below) — do not record it for them.
 
-## Setup — first call on a ticket
+## Setup — opt in, then log
 
-Nothing to install. The ticket is derived from the current git branch name (a leading
-`PROJECT-123` pattern, or the whole branch name if there isn't one) — pass `--ticket` only to
-override it deliberately. The first call for a ticket must pass `--phase plan` (or whichever phase
-you're actually starting in); after that, phase is sticky in that ticket's scratch state
-(`.proof/scratch/<ticket>/state.json`) and every later call on the branch reuses it until you
-pass a new `--phase`.
+Capture is **opt-in per branch.** The live-capture hooks (observe edits, record plan approvals,
+reconcile at turn end) stay inert on a feature branch until that branch's ledger exists — so a
+branch nobody opts into never accrues a `.proof/`, and enabling the plugin globally is safe.
+Opting in creates the ledger:
 
 ```sh
-node generator/decision-log.js propose --title "..." --chose "..." --rejected "..." --why "..." --phase plan
+node generator/decision-log.js start --phase plan
+```
+
+Run `start` at the top of a ticket you intend to document — before you start editing, so the
+observe hook captures precise anchors from the first edit on. (A first `propose` also creates
+the ledger, so if you're already logging decisions you don't strictly need `start`; it just arms
+observation-capture earlier.)
+
+The ticket is derived from the current git branch name (a leading `PROJECT-123` pattern, or the
+whole branch name if there isn't one) — pass `--ticket` only to override it deliberately. `start`
+sets the initial phase (`plan` by default); after that, phase is sticky in that ticket's scratch
+state (`.proof/scratch/<ticket>/state.json`) and every later call on the branch reuses it until
+you pass a new `--phase`.
+
+```sh
+node generator/decision-log.js propose --title "..." --chose "..." --rejected "..." --why "..."
 ```
 
 ## Procedure, by phase

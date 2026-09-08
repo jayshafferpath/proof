@@ -8,12 +8,14 @@
  * and commit alongside that PR's own diff (docs/ledger-schema.md: "committed
  * to the branch" means committed *with that PR*, not accumulated forever).
  */
-const fs = require("fs");
 const path = require("path");
 
 // The first line of every proof.ledger/v1 file. Lives here (the ledger-path
-// authority) rather than in ledger-cli.js so both the deterministic writer and
-// the header-only bootstrap below single-source it without a circular import.
+// authority) rather than in ledger-cli.js so every writer single-sources it
+// without a circular import — the deterministic writer (ledger-cli.appendEvent),
+// and the opt-in bootstrap in decision-log.js's `start`, which writes just this
+// line so appendEvent later sees the lone header, reads zero events, and appends
+// the first real event without a second header.
 const HEADER = { contract: "proof.ledger/v1" };
 
 // Tickets are usually already filesystem-safe ("NEV-4201", or a branch name
@@ -36,17 +38,4 @@ function ledgerPath(cwd, ticket) {
   return path.join(ledgerDir(cwd), `${slug(ticket)}.ledger.jsonl`);
 }
 
-// Create the ledger with just its header if it doesn't exist yet. Idempotent —
-// a no-op once any event (or the header) is present. Called by the capture
-// hooks so a feature branch is never left with observations but no ledger; the
-// deterministic writer (ledger-cli.appendEvent) sees the lone header line, reads
-// zero events, and appends the first real event without a second header.
-function ensureLedgerHeader(cwd, ticket) {
-  const p = ledgerPath(cwd, ticket);
-  if (fs.existsSync(p)) return p;
-  fs.mkdirSync(path.dirname(p), { recursive: true });
-  fs.writeFileSync(p, JSON.stringify(HEADER) + "\n");
-  return p;
-}
-
-module.exports = { slug, ledgerDir, ledgerPath, HEADER, ensureLedgerHeader };
+module.exports = { slug, ledgerDir, ledgerPath, HEADER };

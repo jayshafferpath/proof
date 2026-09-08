@@ -4,6 +4,10 @@
 prototype/*.html
 protos/*.html
 
+# Default output dir for proof / proof-retrofit / the /proof:* skills when run
+# from within this repo. Disposable renders + reduced spines, not source.
+proof-out/
+
 # Scratch state for live decision capture (.plans/live-decision-capture.md) —
 # working files the ledger is distilled from, not the ledger itself.
 # .proof/ledgers/<ticket>.ledger.jsonl is committed; the per-branch scratch is not.

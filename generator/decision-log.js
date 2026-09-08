@@ -30,7 +30,16 @@
  * human-attest` themselves, then `verify`/`confirm` here with --by human — a
  * deliberate escape hatch for a human at their own keyboard, not for the skill.
  *
+ * `start` is the opt-in: it writes the ledger's header (and nothing else) so the
+ * branch's ticket becomes an armed capture scope (generator/scope.js's
+ * resolveActiveScope). Until a ledger exists, the observe/approval hooks stay
+ * inert and no `.proof/` is created — capture is a deliberate act, not a side
+ * effect of editing. A first `propose` also creates the ledger, so `start` is
+ * only needed when you want observation-capture (precise anchors) from the first
+ * edit rather than from your first decision.
+ *
  * CLI:
+ *   decision-log.js start   [--ticket t] [--phase p]
  *   decision-log.js propose --title <t> --chose <c> --rejected <r> --why <w>
  *                            [--id dN] [--ac a,b,c] [--ticket t] [--phase p]
  *   decision-log.js realize <id> [--title ...] [--chose ...] [--rejected ...]
@@ -48,7 +57,7 @@ const fs = require("fs");
 const path = require("path");
 const { execFileSync } = require("child_process");
 const { appendEvent } = require("./ledger-cli");
-const { ledgerPath: ledgerPathForTicket } = require("./ledger-paths");
+const { ledgerPath: ledgerPathForTicket, HEADER } = require("./ledger-paths");
 const { deriveTicketFromBranch, statePath: scopedStatePath } = require("./scope");
 
 const PHASES = ["plan", "execute", "review", "copilot"];
@@ -64,6 +73,17 @@ function readState(p) {
 function writeState(p, state) {
   fs.mkdirSync(path.dirname(p), { recursive: true });
   fs.writeFileSync(p, JSON.stringify(state, null, 2) + "\n");
+}
+
+// Bootstrap a ledger with only its header — the opt-in that `start` performs and
+// that arms the capture hooks. Idempotent; returns whether it created the file.
+// Takes a resolved path so it honors an explicit --ledger override, not just the
+// default per-ticket location.
+function bootstrapHeader(ledgerFile) {
+  if (fs.existsSync(ledgerFile)) return false;
+  fs.mkdirSync(path.dirname(ledgerFile), { recursive: true });
+  fs.writeFileSync(ledgerFile, JSON.stringify(HEADER) + "\n");
+  return true;
 }
 
 function currentBranch() {
@@ -195,9 +215,9 @@ const REQUIRES = {
 
 function main() {
   const [cmd, ...rest] = process.argv.slice(2);
-  if (!cmd || !(cmd in REQUIRES)) {
+  if (!cmd || !(cmd === "start" || cmd in REQUIRES)) {
     console.error(
-      "usage: decision-log.js <propose|realize|revise|reject|verify|confirm|close> ...\n" +
+      "usage: decision-log.js <start|propose|realize|revise|reject|verify|confirm|close> ...\n" +
         "  see the header of generator/decision-log.js for each subcommand's flags",
     );
     process.exit(2);
@@ -205,6 +225,22 @@ function main() {
 
   try {
     const a = parseArgs(rest, { takesId: ID_EVENTS.includes(cmd), event: cmd });
+
+    if (cmd === "start") {
+      const ticket = resolveTicket(a);
+      if (a.phase && !PHASES.includes(a.phase)) {
+        throw new Error(`--phase must be one of ${PHASES.join(", ")}`);
+      }
+      const ledgerFile = a.ledger || ledgerPathForTicket(process.cwd(), ticket);
+      const created = bootstrapHeader(ledgerFile);
+      const statePath = a.state || scopedStatePath(process.cwd(), ticket);
+      const state = readState(statePath);
+      const phase = a.phase || state.phase || "plan";
+      writeState(statePath, { ...state, ticket, phase });
+      console.log(JSON.stringify({ event: "start", ticket, ledger: ledgerFile, phase, created }));
+      return;
+    }
+
     for (const field of REQUIRES[cmd]) {
       if (!a[field]) throw new Error(`${cmd} requires --${field}`);
     }

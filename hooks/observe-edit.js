@@ -11,22 +11,22 @@
  * this repo and reading back the actual payload — not assumed from
  * documentation, which turned out to disagree with itself on other hooks.
  *
- * Scoped to the feature branch: the observation lands under the branch's ticket
- * (generator/scope.js), and the first observation on a branch bootstraps that
- * ticket's ledger with its header so a scope is never left with observations
- * and no ledger. Inert on a trunk branch or detached HEAD (resolveScope null),
- * so edits on main are never captured as orphans.
+ * Scoped to the feature branch and gated on opt-in: the observation lands under
+ * the branch's ticket (generator/scope.js) only once that ticket has been armed
+ * — i.e. its ledger already exists, from `/proof:decision-log start` or a first
+ * `propose`. resolveActiveScope returns null otherwise, so this hook never
+ * creates a `.proof/` on a branch nobody chose to capture. Inert too on a trunk
+ * branch or detached HEAD, so edits on main are never captured as orphans.
  *
- * Always exits 0. An edit outside any git repo / on trunk, or any failure
- * reading/parsing, is silently skipped — this hook must never be the reason
- * a tool call looks like it failed.
+ * Always exits 0. An edit on trunk / an un-opted-in branch / outside any git
+ * repo, or any failure reading/parsing, is silently skipped — this hook must
+ * never be the reason a tool call looks like it failed.
  */
 const fs = require("fs");
 const path = require("path");
 const { execFileSync } = require("child_process");
 const { appendObservation, enclosingSymbol } = require("../generator/observe");
-const { resolveScope, observationsPath } = require("../generator/scope");
-const { ensureLedgerHeader } = require("../generator/ledger-paths");
+const { resolveActiveScope, observationsPath } = require("../generator/scope");
 
 function readStdin() {
   return fs.readFileSync(0, "utf8");
@@ -65,9 +65,10 @@ function main() {
 
   // Use the payload's own cwd, not this hook process's — how Claude Code sets a
   // spawned hook's working directory isn't something to rely on. Inert unless
-  // we're on a feature branch: no capture for edits on trunk / detached HEAD.
+  // we're on a feature branch that has opted in (its ledger exists): no capture
+  // for edits on trunk / detached HEAD, or a branch nobody armed.
   const cwd = input.cwd || process.cwd();
-  const scope = resolveScope(cwd);
+  const scope = resolveActiveScope(cwd);
   if (!scope) return;
 
   const file = toolInput.file_path;
@@ -99,7 +100,6 @@ function main() {
   }
 
   try {
-    ensureLedgerHeader(cwd, scope.ticket);
     appendObservation(observationsPath(cwd, scope.ticket), {
       file,
       lines: `${range[0]}-${range[1]}`,

@@ -6,7 +6,7 @@ behaviour** those decisions produce. Every claim is anchored to a real line and 
 its provenance — who said it and how strongly it's backed.
 
 `proof` explains a change so a reviewer can approve it. It does not find defects, score
-quality, or suggest improvements. Static analysis already hunts for bugs; nothing here does.
+quality, or suggest improvements.
 
 ## The idea
 
@@ -26,16 +26,16 @@ what was **chosen**, what was **rejected**, and **why it matters**. Deliberate *
 count, and are often the most valuable thing surfaced, because a diff can't show them. See
 [`docs/design.md`](docs/design.md) for the full model.
 
-Provenance is the load-bearing rule. A tool that makes a reviewer confident via reasoning
-that's subtly wrong is worse than a raw diff, because the reviewer stops looking. So proof
-never blurs *who is making a claim and how strongly it's backed* — and it derives that tier
-mechanically from the evidence, never letting a source assert a stronger claim than it earned.
-That single rule is what decides which of the three paths below you should use.
+Every claim carries its provenance: *who is making it* and *how strongly it's backed*. proof
+derives that tier mechanically from the evidence rather than letting a source assert it, so a
+claim never reads stronger than what backs it. This is what separates the three build paths
+below — they differ in the evidence they have, and therefore in how strong a claim they can
+make.
 
 ## Three ways to build a walkthrough — strongest evidence first
 
 The same renderer, validator, and page come out of all three. They differ only in **where the
-decisions come from**, and therefore in how much they can honestly claim. The provenance
+decisions come from**, and therefore in the strongest tier they can reach. The provenance
 ladder (weakest → strongest) is:
 
 ```
@@ -44,21 +44,22 @@ reconstructed  <  first-hand ≈ through-review  <  machine-verified  <  author-
 
 | Path | How decisions are sourced | Provenance ceiling | Use when |
 |---|---|---|---|
-| **Live capture** | agent logs them *as it works* | up to `author-verified` | you're doing the work now (the point of the tool) |
+| **Live capture** | agent logs them *as it works* | up to `author-verified` | you're doing the work now |
 | **Retrofit** | reconstructed from a finished PR's artifacts | `through-review` | the PR is already done |
 | **Reconstruct-from-diff** | a model reads the diff cold | `reconstructed` | no ledger, no artifacts, just a diff |
 
-### 1. Live capture — the flagship
+### 1. Live capture
 
-The only path that can reach `first-hand` and the verified tiers, and the only one that
-captures deviation reasoning at all: "planned X, hit Y, switched to Z" is never written down
-anywhere a reconstruction could find it later. Capturing it costs one instruction to an agent
-that already knows the answer at the moment it matters.
+The only path that reaches `first-hand` and the verified tiers, and the only one that captures
+deviation reasoning — "planned X, hit Y, switched to Z", which no finished PR records anywhere
+a later reconstruction could recover. An agent logs each decision as it works.
 
 Driven from inside Claude Code by the **`/proof:decision-log`** skill, which writes an
 append-only decision ledger (`proof.ledger/v1`, one file per PR at
 `.proof/ledgers/<ticket>.ledger.jsonl`) as the work happens:
 
+- **opt in** → `start` on the branch you intend to document. This creates the ledger, which is
+  what arms the hooks below — capture is inert until you do (a first `propose` also creates it)
 - **plan** → `propose` each decision you intend
 - **execute** → `realize` / `revise` / `reject` each one as you implement (a `revise` with its
   reason is the deviation a diff can't show)
@@ -66,14 +67,14 @@ append-only decision ledger (`proof.ledger/v1`, one file per PR at
 - **close** when done
 
 Three Claude Code **hooks** (registered via [`hooks/hooks.json`](hooks/hooks.json)) turn the
-discipline from "remember to log" into something structural. All three are scoped to the feature
-branch and inert on a trunk branch (`main`/`master`/`develop`) or a detached HEAD, so enabling
-the plugin globally is safe and edits on `main` are never captured as orphans:
+discipline from "remember to log" into something structural once you've opted in. All three are
+scoped to the feature branch and stay inert on a trunk branch (`main`/`master`/`develop`) or a
+detached HEAD, **and** on any feature branch whose ledger doesn't exist yet — so a branch you
+never `start` gets no `.proof/` and no capture, and enabling the plugin globally is safe:
 
 - `observe-edit` (`PostToolUse` on `Edit`/`Write`) records which lines changed at which commit,
-  so anchors are exact and the liveness claim is checkable — not self-reported. The first edit
-  on a branch also bootstraps that ticket's ledger with its header, so a scope is never left with
-  observations and no ledger.
+  so anchors are exact and the liveness claim is checkable — not self-reported. It fires only
+  after the branch has opted in; edits before `start` (or the first `propose`) are not captured.
 - `record-approval` (`PostToolUse` on `ExitPlanMode`) records a human plan approval, which the
   ledger later pairs to a `confirm`.
 - `reconcile-stop` (`Stop`) blocks the turn from ending while any proposed decision has no
@@ -85,31 +86,28 @@ Everything a session writes is scoped under the branch's ticket: the ledger at
 `.proof/scratch/<ticket>/` (`generator/scope.js`). Add `.proof/scratch/` to the target repo's
 `.gitignore`; commit `.proof/ledgers/`.
 
-`first-hand` is **earned, not asserted**: `by: agent` alone is not evidence an event was
-written at decision-time rather than dumped from memory at the end. It requires the
-observation hook's `observedAt` to match the commit the event was written at. A repo with no
-hooks produces no such evidence, so its events honestly read `reconstructed` — the same tier a
-retrofit gets. See [`skills/decision-log/SKILL.md`](skills/decision-log/SKILL.md) and
+`first-hand` requires evidence that an event was written at decision-time, not `by: agent`
+alone: the observation hook's `observedAt` must match the commit the event was written at. A
+repo with no hooks produces no such evidence, so its events fall back to `reconstructed` — the
+same tier a retrofit gets. See [`skills/decision-log/SKILL.md`](skills/decision-log/SKILL.md) and
 [`docs/ledger-schema.md`](docs/ledger-schema.md).
 
 ### 2. Retrofit — from a finished PR
 
 Reconstruct the ledger **backwards** from a completed PR's leftover artifacts — the PR body,
 commits, and any local review plan — instead of emitting it forward. Every event is written
-`by: retrofit`, which the ladder caps at `through-review` and can **never** raise to
-`first-hand` or a verified tier: reconstruction must not launder itself into a stronger claim
-than a live emission. It's the bootstrap that turns already-finished tickets into fixtures
-today, with zero change to how any agent behaves — and it announces its own trust level as a
-draft. Its one hard ceiling is exactly what live capture exists to fix: reasoning that was
-never written down.
+`by: retrofit`, which caps at `through-review`; it can't reach `first-hand` or a verified tier,
+because a reconstruction has no decision-time evidence. Use it to turn already-finished tickets
+into walkthroughs without changing how any agent behaves. Its ceiling is the reasoning that was
+never written down — the gap live capture exists to close.
 
 ```sh
 # From inside Claude Code (interpretive extraction, then deterministic render):
 /proof:retrofit-ledger <pr-number>          # → ./proof-out/pr-<n>.html
 /proof:retrofit-stack  <any-pr-in-a-stack>  # → one walkthrough for the whole chain
 
-# Or render an already-extracted ledger by hand:
-proof-retrofit <ledger.jsonl> <pr-number> --repo owner/name --out ./proof-out
+# Or render an already-extracted ledger by hand (writes ./proof-out/ by default):
+proof-retrofit <ledger.jsonl> <pr-number> --repo owner/name [--out ./proof-out]
 ```
 
 See [`docs/retrofit-ledger.md`](docs/retrofit-ledger.md) for the ceiling and a worked example.
@@ -121,7 +119,7 @@ the decisions. This is the weakest source — output is `reconstructed` and shou
 a draft until a human corrects it — but it needs nothing but the PR.
 
 ```sh
-proof <pr-number> [--repo owner/name] --out ./proof-out
+proof <pr-number> [--repo owner/name] [--out ./proof-out]   # ./proof-out/ by default
 ```
 
 The pipeline is [detailed below](#the-reconstruct-from-diff-pipeline).
@@ -156,9 +154,10 @@ This puts three commands on your `PATH`:
 | `proof-render <data.json> [out.html]` | `generate.js` | render walkthrough JSON to HTML |
 
 Commands resolve their own install location, so vendored EJS, templates, and schemas travel
-with them — no `npm install`, no `PROOF_HOME`. Running from another repo, pass `--out
-./proof-out`; the default output directory sits inside the install, not your current repo.
-Likewise give `proof-render` an explicit `out.html` or it writes next to the input JSON.
+with them — no `npm install`, no `PROOF_HOME`. `proof` and `proof-retrofit` default their
+output to `./proof-out/` in the repo you invoke them from (override with `--out`), matching
+where the `/proof:*` skills write. `proof-render` is the exception: give it an explicit
+`out.html` or it writes next to the input JSON.
 
 ### Install the plugin (for the `/proof:*` skills)
 
@@ -180,9 +179,9 @@ three live-capture hooks.
 
 The page has three tabs, all **derived from the same decision spine** — behaviour and diff are
 evidence a decision owns, never authored separately, so they cannot desync from the spine. It
-opens on **Diff** when the PR has one (the reviewer's first screen is the real diff, not a
-claim to be trusted), falling back to **Behaviour** when there are runtime scenarios but no
-diff, then **Decisions**.
+opens on **Diff** when the PR has one, so the reviewer's first screen is the real diff rather
+than proof's narration of it; it falls back to **Behaviour** when there are runtime scenarios
+but no diff, then **Decisions**.
 
 - **Diff** — the real unified diff, each line tinted by its coverage bucket. Explained lines
   link to the decision behind them; the diff is computed from the spine, so it can't drift.
