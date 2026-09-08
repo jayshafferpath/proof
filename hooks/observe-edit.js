@@ -11,7 +11,13 @@
  * this repo and reading back the actual payload — not assumed from
  * documentation, which turned out to disagree with itself on other hooks.
  *
- * Always exits 0. An edit to a file outside any git repo, or any failure
+ * Scoped to the feature branch: the observation lands under the branch's ticket
+ * (generator/scope.js), and the first observation on a branch bootstraps that
+ * ticket's ledger with its header so a scope is never left with observations
+ * and no ledger. Inert on a trunk branch or detached HEAD (resolveScope null),
+ * so edits on main are never captured as orphans.
+ *
+ * Always exits 0. An edit outside any git repo / on trunk, or any failure
  * reading/parsing, is silently skipped — this hook must never be the reason
  * a tool call looks like it failed.
  */
@@ -19,6 +25,8 @@ const fs = require("fs");
 const path = require("path");
 const { execFileSync } = require("child_process");
 const { appendObservation, enclosingSymbol } = require("../generator/observe");
+const { resolveScope, observationsPath } = require("../generator/scope");
+const { ensureLedgerHeader } = require("../generator/ledger-paths");
 
 function readStdin() {
   return fs.readFileSync(0, "utf8");
@@ -55,6 +63,13 @@ function main() {
   const { tool_name: toolName, tool_input: toolInput, tool_response: toolResponse } = input;
   if (!["Edit", "Write"].includes(toolName) || !toolInput || !toolInput.file_path) return;
 
+  // Use the payload's own cwd, not this hook process's — how Claude Code sets a
+  // spawned hook's working directory isn't something to rely on. Inert unless
+  // we're on a feature branch: no capture for edits on trunk / detached HEAD.
+  const cwd = input.cwd || process.cwd();
+  const scope = resolveScope(cwd);
+  if (!scope) return;
+
   const file = toolInput.file_path;
   let range = rangeFromPatch(toolResponse && toolResponse.structuredPatch);
   if (!range) {
@@ -84,10 +99,8 @@ function main() {
   }
 
   try {
-    // Use the payload's own cwd, not this hook process's — see
-    // hooks/record-approval.js for why process.cwd() isn't trusted here.
-    const cwd = input.cwd || process.cwd();
-    appendObservation(path.join(cwd, ".proof", "observations.jsonl"), {
+    ensureLedgerHeader(cwd, scope.ticket);
+    appendObservation(observationsPath(cwd, scope.ticket), {
       file,
       lines: `${range[0]}-${range[1]}`,
       commit,

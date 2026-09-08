@@ -16,9 +16,10 @@
  * Always exits 0.
  */
 const fs = require("fs");
-const path = require("path");
 const { execFileSync } = require("child_process");
 const { recordHumanAttestation } = require("../generator/ledger-cli");
+const { resolveScope, attestPath } = require("../generator/scope");
+const { ensureLedgerHeader } = require("../generator/ledger-paths");
 
 function readStdin() {
   return fs.readFileSync(0, "utf8");
@@ -31,20 +32,6 @@ function gitHead(dir) {
   }).trim();
 }
 
-function currentBranch(dir) {
-  return execFileSync("git", ["-C", dir, "branch", "--show-current"], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "ignore"],
-  }).trim();
-}
-
-// Same rule as generator/decision-log.js's resolveTicket: a Jira-style key
-// at the start of the branch name, else the whole branch name.
-function deriveTicketFromBranch(branch) {
-  const m = branch.match(/^[A-Z][A-Z0-9]*-\d+/);
-  return m ? m[0] : branch;
-}
-
 function main() {
   let input;
   try {
@@ -54,31 +41,25 @@ function main() {
   }
   if (input.tool_name !== "ExitPlanMode") return;
 
+  // Use the payload's own cwd, not this hook process's — how Claude Code sets a
+  // spawned hook's working directory isn't something to rely on. The scope (the
+  // feature branch's ticket) is the branch's, not a sticky state.ticket that
+  // could be left over from another session; inert on trunk / detached HEAD.
   const cwd = input.cwd || process.cwd();
-  let ticket;
+  const scope = resolveScope(cwd);
+  if (!scope) return;
+
   let commit;
   try {
-    const state = JSON.parse(fs.readFileSync(path.join(cwd, ".proof", "state.json"), "utf8"));
-    ticket = state.ticket;
-  } catch {
-    // no sticky state yet — fall back to deriving from the branch, same as
-    // decision-log.js does on an agent's first call for a ticket
-  }
-  try {
     commit = gitHead(cwd);
-    if (!ticket) ticket = deriveTicketFromBranch(currentBranch(cwd));
   } catch {
     return; // not inside a git repo
   }
-  if (!ticket) return;
 
   try {
-    // Use the payload's own cwd, not this hook process's — how Claude Code
-    // sets the working directory for a spawned hook command isn't confirmed,
-    // so don't rely on defaultAttestPath()'s process.cwd() to match the
-    // session's .proof/ directory.
-    recordHumanAttestation(path.join(cwd, ".proof", "human-attest.jsonl"), {
-      ticket,
+    ensureLedgerHeader(cwd, scope.ticket);
+    recordHumanAttestation(attestPath(cwd, scope.ticket), {
+      ticket: scope.ticket,
       kind: "confirm",
       commit,
     });

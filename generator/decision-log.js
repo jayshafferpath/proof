@@ -7,8 +7,10 @@
  * which phase, one flag per anchor instead of a JSON blob — so a call reads
  * close to the judgment it's recording and nothing else.
  *
- * Ticket and phase are sticky in .proof/state.json: set once (--ticket,
- * --phase), reused on every later call for this ticket until overridden.
+ * The ticket is the current git branch's (a leading PROJECT-123, else the whole
+ * branch name); pass --ticket to override. Phase is sticky in the ticket's
+ * scratch state, .proof/scratch/<ticket>/state.json (generator/scope.js): set
+ * once with --phase, reused on every later call for this ticket until overridden.
  * Ledger defaults to .proof/ledgers/<ticket>.ledger.jsonl (generator/ledger-
  * paths.js) — one file per initiative/PR, not one growing file per repo, so
  * a ticket's ledger stays small enough to review and commit alongside that
@@ -47,13 +49,10 @@ const path = require("path");
 const { execFileSync } = require("child_process");
 const { appendEvent } = require("./ledger-cli");
 const { ledgerPath: ledgerPathForTicket } = require("./ledger-paths");
+const { deriveTicketFromBranch, statePath: scopedStatePath } = require("./scope");
 
 const PHASES = ["plan", "execute", "review", "copilot"];
 const ID_EVENTS = ["realize", "revise", "verify", "confirm"]; // take a positional <id>
-
-function defaultStatePath() {
-  return path.join(process.cwd(), ".proof", "state.json");
-}
 
 function readState(p) {
   try {
@@ -89,21 +88,18 @@ function gitHead() {
   }
 }
 
-// A Jira-style key at the start of the branch name ("NEV-1645-add-x" -> "NEV-1645");
-// falls back to the whole branch name for repos that don't name branches that way.
-function deriveTicketFromBranch(branch) {
-  const m = branch.match(/^[A-Z][A-Z0-9]*-\d+/);
-  return m ? m[0] : branch;
-}
-
-function resolveTicket(a, state) {
+// Branch-first, deliberately not consulting state.ticket: scratch state now
+// nests under the ticket (generator/scope.js), so reading a sticky state.ticket
+// to *find* the ticket would be circular — and that stickiness is exactly what
+// bled a branch's ticket into an unrelated session on main. The branch is the
+// source of truth; --ticket is an explicit override for a deliberately-named
+// ledger, in which case hook-captured observations (branch-derived) may land
+// under a different scope.
+function resolveTicket(a) {
   if (a.ticket) return a.ticket;
-  if (state.ticket) return state.ticket;
   const branch = currentBranch();
   if (!branch) {
-    throw new Error(
-      "no --ticket given, none in .proof/state.json, and no current git branch to derive one from",
-    );
+    throw new Error("no --ticket given and no current git branch to derive one from");
   }
   return deriveTicketFromBranch(branch);
 }
@@ -219,9 +215,9 @@ function main() {
       throw new Error(`--by human only applies to verify/confirm`);
     }
 
-    const statePath = a.state || defaultStatePath();
+    const ticket = resolveTicket(a);
+    const statePath = a.state || scopedStatePath(process.cwd(), ticket);
     const state = readState(statePath);
-    const ticket = resolveTicket(a, state);
     const phase = resolvePhase(a, state);
     writeState(statePath, { ...state, ticket, phase });
     const ledgerPath = a.ledger || ledgerPathForTicket(process.cwd(), ticket);
@@ -236,4 +232,4 @@ function main() {
 }
 
 if (require.main === module) main();
-module.exports = { resolveTicket, resolvePhase, deriveTicketFromBranch, parseAnchor, parseTest, buildEvent };
+module.exports = { resolveTicket, resolvePhase, parseAnchor, parseTest, buildEvent };
